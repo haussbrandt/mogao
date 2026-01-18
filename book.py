@@ -1,3 +1,5 @@
+# This file is heavily inspired by https://github.com/karpathy/reader3/blob/master/reader3.py
+
 from dataclasses import dataclass
 from ebooklib import epub
 from pathlib import Path
@@ -9,20 +11,26 @@ class Metadata:
     authors: list[str]
 
 
+@dataclass
 class Book:
-    def __init__(self, path) -> None:
-        self.ebook = epub.read_epub(path)
-        self.metadata = self._process_metadata()
+    metadata: Metadata
 
-    def _process_metadata(self):
-        title = self.ebook.get_metadata("DC", "title")
-        title = title[0][0] if title else "Untitled"
-        authors = self.ebook.get_metadata("DC", "creator")
-        authors = [author[0] for author in authors] if authors else []
-        return Metadata(title, authors)
+
+def _process_metadata(ebook):
+    title = ebook.get_metadata("DC", "title")
+    title = title[0][0] if title else "Untitled"
+    authors = ebook.get_metadata("DC", "creator")
+    authors = [author[0] for author in authors] if authors else []
+    return Metadata(title, authors)
+
+
+def generate_book(path) -> Book:
+    ebook = epub.read_epub(path)
+    metadata = _process_metadata(ebook)
+    return Book(metadata)
 
 
 if __name__ == "__main__":
-    for book in Path("samples").glob("**/*.epub"):
-        book = Book(book)
-        print(book.metadata)
+    for path in Path("samples").glob("**/*.epub"):
+        book = generate_book(path)
+        print(book)
