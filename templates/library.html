@@ -20,6 +20,9 @@
         <div class="book-grid">
             {% for book in books %}
             <div class="book-card">
+				<form action="/delete/{{ book.id }}" method="post" onsubmit="return confirm('Are you sure you want to delete this book?');">
+					<button type="submit" class="btn delete-btn">x</button>
+				</form>
                 <div class="book-title">{{ book.title }}</div>
                 <div class="book-meta">
                     {{ book.author }}<br>

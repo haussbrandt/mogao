@@ -48,6 +48,7 @@ h1 {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
 }
 .book-title {
   font-size: 1.2em;
@@ -60,6 +61,7 @@ h1 {
   font-size: 0.9em;
   margin-bottom: 15px;
 }
+
 .btn {
   display: inline-block;
   background: #3498db;
@@ -75,10 +77,45 @@ h1 {
   background: #2980b9;
 }
 
-.upload-btn:hover {
-  background-color: #2ecc71;
-}
-
 .hidden-input {
   display: none !important;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  /* Styling to make it a small circle */
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background-color: #ff4d4d;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 22px; /* Center the × verticaly */
+  text-align: center;
+  cursor: pointer;
+  padding: 0;
+
+  /* Animation properties */
+  opacity: 0; /* Hidden by default */
+  transition:
+    opacity 0.2s ease,
+    transform 0.1s ease;
+  z-index: 10;
+}
+
+/* Show button when hovering over the card */
+.book-card:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background-color: #c0392b;
+}
+
+.upload-btn:hover {
+  background-color: #2ecc71;
 }

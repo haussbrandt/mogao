@@ -93,6 +93,28 @@ async def upload_book(file: UploadFile = File(...)):
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/delete/{book_id}")
+async def delete_book(book_id: str):
+    """
+    Deletes a book folder and refreshes the cache.
+    """
+    # Security: Sanitizing to ensure no one deletes ../system_files
+    safe_id = os.path.basename(book_id)
+    book_path = os.path.join(LIBRARY_PATH, safe_id)
+
+    if os.path.exists(book_path):
+        try:
+            shutil.rmtree(book_path)
+            load_book_cached.cache_clear()
+        except Exception as e:
+            print(f"Error deleting book {safe_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to delete book")
+    else:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.get("/read/{book_id}", response_class=HTMLResponse)
 async def redirect_to_first_chapter(request: Request, book_id: str):
     """Helper to just go to chapter 0."""
