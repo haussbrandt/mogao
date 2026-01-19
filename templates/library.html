@@ -8,7 +8,15 @@
 </head>
 <body>
     <div class="container">
-        <h1>Library</h1>
+		<div class="header-row">
+            <h1>Library</h1>
+            <form action="/upload" method="post" enctype="multipart/form-data">
+                <label for="epub-upload" class="btn upload-btn">
+                    + Upload Book
+                </label>
+                <input id="epub-upload" class="hidden-input" type="file" name="file" accept=".epub" onchange="this.form.submit()">
+            </form>
+        </div>
         <div class="book-grid">
             {% for book in books %}
             <div class="book-card">

@@ -1,14 +1,16 @@
 import os
 import pickle
 from functools import lru_cache
+import shutil
 from typing import Optional
+import uuid
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, File, Request, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from book import Book, Metadata, ChapterContent, TOCEntry
+from book import Book, Metadata, ChapterContent, TOCEntry, generate_book
 from constants import LIBRARY_PATH
 
 app = FastAPI()
@@ -57,6 +59,38 @@ async def library_view(request: Request):
     return templates.TemplateResponse(
         "library.html", {"request": request, "books": books}
     )
+
+
+@app.post("/upload")
+async def upload_book(file: UploadFile = File(...)):
+    """
+    Handles EPUB upload.
+    Saves to temp, processes with generate_book, clears temp, refreshes library.
+    """
+    if not file.filename.endswith(".epub"):
+        raise HTTPException(status_code=400, detail="Only .epub files are allowed")
+
+    # Save uploaded file temporarily
+    temp_filename = f"temp_{uuid.uuid4()}.epub"
+    try:
+        with open(temp_filename, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Process the book
+        generate_book(temp_filename, LIBRARY_PATH)
+
+        # Invalidate cache if necessary (simple way is to rely on reload or clear lru)
+        load_book_cached.cache_clear()
+
+    except Exception as e:
+        print(f"Error processing book: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process book")
+    finally:
+        # Cleanup temp file
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/read/{book_id}", response_class=HTMLResponse)

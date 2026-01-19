@@ -7,4 +7,5 @@ requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "ebooklib>=0.20",
+    "python-multipart>=0.0.21",
 ]
