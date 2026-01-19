@@ -53,6 +53,7 @@ async def library_view(request: Request):
                             "title": book.metadata.title,
                             "author": ", ".join(book.metadata.authors),
                             "chapters": len(book.spine),
+                            "cover_url": f"/read/{item}/images/{book.cover_image}",
                         }
                     )
 

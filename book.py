@@ -62,6 +62,7 @@ class Book:
     toc: list[TOCEntry]
     images: dict[str, str]
     processed_at: str
+    cover_image: str | None = None
 
 
 def _process_metadata(ebook):
@@ -173,6 +174,7 @@ def generate_book(path, library_dir) -> Book:
 
     # Extract images
     image_map = {}  # Key: internal_path, Value: local_relative_path
+    cover_image_filename = None
     for item in ebook.get_items():
         if item.get_type() in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
             # Normalize filename
@@ -181,6 +183,9 @@ def generate_book(path, library_dir) -> Book:
             safe_fname = "".join(
                 [c for c in original_fname if c.isalpha() or c.isdigit() or c in "._-"]
             ).strip()
+
+            if item.get_type() == ebooklib.ITEM_COVER or "cover" in safe_fname:
+                cover_image_filename = safe_fname
 
             # Save to disk
             local_path = os.path.join(images_dir, safe_fname)
@@ -261,7 +266,12 @@ def generate_book(path, library_dir) -> Book:
             spine_chapters.append(chapter)
 
     processed_book = Book(
-        metadata, spine_chapters, toc_structure, image_map, datetime.now().isoformat()
+        metadata,
+        spine_chapters,
+        toc_structure,
+        image_map,
+        datetime.now().isoformat(),
+        cover_image=cover_image_filename,
     )
 
     # Save to file
