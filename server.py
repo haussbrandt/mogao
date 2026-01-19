@@ -12,6 +12,7 @@ from book import Book, Metadata, ChapterContent, TOCEntry
 from constants import LIBRARY_PATH
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 

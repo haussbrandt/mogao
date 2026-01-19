@@ -1,0 +1,129 @@
+/* Layout */
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  font-family: "Georgia", serif;
+  background: #fff;
+}
+
+/* Sidebar */
+#sidebar {
+  width: 300px;
+  background: #f8f9fa;
+  border-right: 1px solid #e9ecef;
+  overflow-y: auto;
+  padding: 20px;
+  flex-shrink: 0;
+}
+.nav-header {
+  font-family: -apple-system, sans-serif;
+  font-weight: bold;
+  color: #495057;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #dee2e6;
+}
+.nav-home {
+  display: block;
+  margin-bottom: 20px;
+  color: #3498db;
+  text-decoration: none;
+  font-family: -apple-system, sans-serif;
+  font-size: 0.9em;
+}
+
+/* TOC Tree */
+ul.toc-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+ul.toc-list ul {
+  padding-left: 20px;
+} /* Indent children */
+li.toc-item {
+  margin-bottom: 8px;
+}
+a.toc-link {
+  text-decoration: none;
+  color: #495057;
+  font-size: 0.95em;
+  display: block;
+  padding: 4px 0;
+  line-height: 1.4;
+}
+a.toc-link:hover {
+  color: #000;
+  text-decoration: underline;
+}
+a.toc-link.active {
+  color: #d63384;
+  font-weight: bold;
+}
+
+/* Main Content */
+#main {
+  flex-grow: 1;
+  overflow-y: auto;
+  position: relative;
+  scroll-behavior: smooth;
+}
+.content-container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 60px 40px;
+  line-height: 1.8;
+  font-size: 1.15em;
+  color: #212529;
+}
+
+/* Content Styling (Basic normalization for the book HTML) */
+.book-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 20px auto;
+}
+.book-content h1,
+.book-content h2,
+.book-content h3 {
+  font-family: -apple-system, sans-serif;
+  margin-top: 1.5em;
+  color: #333;
+}
+.book-content p {
+  margin-bottom: 1.5em;
+  text-align: justify;
+}
+
+/* Navigation Footer */
+.chapter-nav {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 60px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+  font-family: -apple-system, sans-serif;
+}
+.nav-btn {
+  text-decoration: none;
+  color: #3498db;
+  font-weight: bold;
+  padding: 10px 20px;
+  border: 1px solid #3498db;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.nav-btn:hover {
+  background: #3498db;
+  color: white;
+}
+.nav-btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  border-color: #ccc;
+  color: #ccc;
+}
