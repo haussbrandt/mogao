@@ -174,7 +174,7 @@ def generate_book(path, library_dir) -> Book:
     # Extract images
     image_map = {}  # Key: internal_path, Value: local_relative_path
     for item in ebook.get_items():
-        if item.get_type() == ebooklib.ITEM_IMAGE:
+        if item.get_type() in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
             # Normalize filename
             original_fname = os.path.basename(item.get_name())
             # Sanitize filename for OS
@@ -214,8 +214,8 @@ def generate_book(path, library_dir) -> Book:
             soup = BeautifulSoup(raw_content, "html.parser")
 
             # A. Fix Images
-            for img in soup.find_all("img"):
-                src = img.get("src", "")
+            for img in soup.find_all(["img", "image"]):
+                src = img.get("src") or img.get("xlink:href") or img.get("href")
                 if not src:
                     continue
 
@@ -224,10 +224,19 @@ def generate_book(path, library_dir) -> Book:
                 filename = os.path.basename(src_decoded)
 
                 # Try to find in map
+                new_src = None
                 if src_decoded in image_map:
-                    img["src"] = image_map[src_decoded]
+                    new_src = image_map[src_decoded]
                 elif filename in image_map:
-                    img["src"] = image_map[filename]
+                    new_src = image_map[filename]
+
+                if new_src:
+                    if img.name == "img":
+                        img["src"] = new_src
+                    elif img.has_attr("xlink:href"):
+                        img["xlink:href"] = new_src
+                    else:
+                        img["href"] = new_src
 
             # B. Clean HTML
             soup = clean_html_content(soup)

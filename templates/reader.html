@@ -50,34 +50,7 @@
             <ul class="toc-list">
             {% for item in items %}
                 <li class="toc-item">
-                    <!--
-                        Matching Logic:
-                        If the TOC item filename matches the current chapter filename, mark active.
-                        Ideally we match spine indices, but Reader 3 TOC maps to filenames.
-                        We use a simple hash matching logic here.
-                    -->
                     {% set is_active = current_chapter.href == item.file_href %}
-
-                    <!--
-                       We need to find which linear chapter index (0, 1, 2) corresponds
-                       to this TOC entry file.
-                       Since that's hard to calculate in Jinja, we just link to the
-                       file anchor. BUT, to make our linear navigation work, we
-                       rely on the fact that the user is currently reading 'chapter_index'.
-
-                       Ideally, clicking a TOC link should find the 'index' of that file.
-                       For simplicity in this version: We link to the 'href' (filename)
-                       and let JavaScript or Backend handle it?
-
-                       Actually, let's just link to the file. The browser interprets #anchors.
-                       However, our router uses /read/book/INDEX.
-
-                       SIMPLE FIX: We won't link the TOC to the route index in this simple version
-                       unless we build a map. We will visually show structure,
-                       but rely on "Previous/Next" for linear reading.
-
-                       BETTER FIX: Use JavaScript to match filenames.
-                    -->
                     <a href="#" onclick="findAndGo('{{ item.file_href }}')"
                        class="toc-link {% if is_active %}active{% endif %}">
                         {{ item.title }}
