@@ -59,9 +59,9 @@ async def library_view(request: Request):
 
 
 @app.get("/read/{book_id}", response_class=HTMLResponse)
-async def redirect_to_first_chapter(book_id: str):
+async def redirect_to_first_chapter(request: Request, book_id: str):
     """Helper to just go to chapter 0."""
-    return await read_chapter(book_id=book_id, chapter_index=0)
+    return await read_chapter(request=request, book_id=book_id, chapter_index=0)
 
 
 @app.get("/read/{book_id}/{chapter_index}", response_class=HTMLResponse)
