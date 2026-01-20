@@ -99,6 +99,10 @@ a.toc-link.active {
   text-align: justify;
 }
 
+.book-content div {
+  margin-bottom: 1.5em;
+}
+
 /* Navigation Footer */
 .chapter-nav {
   display: flex;
