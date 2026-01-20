@@ -79,10 +79,7 @@ async def upload_book(files: list[UploadFile] = File(...)):
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
-            # Process the book
             generate_book(temp_filename, LIBRARY_PATH)
-
-            # Invalidate cache if necessary (simple way is to rely on reload or clear lru)
             load_book_cached.cache_clear()
 
         except Exception as e:
