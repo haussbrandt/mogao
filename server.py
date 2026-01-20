@@ -63,33 +63,35 @@ async def library_view(request: Request):
 
 
 @app.post("/upload")
-async def upload_book(file: UploadFile = File(...)):
+async def upload_book(files: list[UploadFile] = File(...)):
     """
     Handles EPUB upload.
     Saves to temp, processes with generate_book, clears temp, refreshes library.
     """
-    if not file.filename.endswith(".epub"):
-        raise HTTPException(status_code=400, detail="Only .epub files are allowed")
 
-    # Save uploaded file temporarily
-    temp_filename = f"temp_{uuid.uuid4()}.epub"
-    try:
-        with open(temp_filename, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+    for file in files:
+        if not file.filename.endswith(".epub"):
+            raise HTTPException(status_code=400, detail="Only .epub files are allowed")
 
-        # Process the book
-        generate_book(temp_filename, LIBRARY_PATH)
+        # Save uploaded file temporarily
+        temp_filename = f"temp_{uuid.uuid4()}.epub"
+        try:
+            with open(temp_filename, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
 
-        # Invalidate cache if necessary (simple way is to rely on reload or clear lru)
-        load_book_cached.cache_clear()
+            # Process the book
+            generate_book(temp_filename, LIBRARY_PATH)
 
-    except Exception as e:
-        print(f"Error processing book: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process book")
-    finally:
-        # Cleanup temp file
-        if os.path.exists(temp_filename):
-            os.remove(temp_filename)
+            # Invalidate cache if necessary (simple way is to rely on reload or clear lru)
+            load_book_cached.cache_clear()
+
+        except Exception as e:
+            print(f"Error processing book: {e}")
+            raise HTTPException(status_code=500, detail="Failed to process book")
+        finally:
+            # Cleanup temp file
+            if os.path.exists(temp_filename):
+                os.remove(temp_filename)
 
     return RedirectResponse(url="/", status_code=303)
 
