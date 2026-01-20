@@ -1,95 +1,95 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ book.metadata.title }}</title>	
-	<link rel="stylesheet" href="{{ url_for('static', path='reader.css') }}">
-</head>
-<body>
-
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ book.metadata.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='reader.css') }}" />
+  </head>
+  <body>
     <!-- SIDEBAR -->
     <div id="sidebar">
-        <a href="/" class="nav-home">← Back to Library</a>
-        <div class="nav-header">{{ book.metadata.title }}</div>
+      <a href="/" class="nav-home">← Back to Library</a>
+      <div class="nav-header">{{ book.metadata.title }}</div>
 
-        <!-- Recursive Macro for TOC -->
-        {% macro render_toc(items) %}
-            <ul class="toc-list">
-            {% for item in items %}
-                <li class="toc-item">
-                    {% set is_active = current_chapter.href == item.file_href %}
-                    <a href="#" onclick="findAndGo('{{ item.file_href }}')"
-                       class="toc-link {% if is_active %}active{% endif %}">
-                        {{ item.title }}
-                    </a>
+      <!-- Recursive Macro for TOC -->
+      {% macro render_toc(items) %}
+      <ul class="toc-list">
+        {% for item in items %}
+        <li class="toc-item">
+          {% set is_active = current_chapter.href == item.file_href %}
+          <a
+            href="#"
+            onclick="findAndGo('{{ item.file_href }}')"
+            class="toc-link {% if is_active %}active{% endif %}"
+          >
+            {{ item.title }}
+          </a>
 
-                    {% if item.children %}
-                        {{ render_toc(item.children) }}
-                    {% endif %}
-                </li>
-            {% endfor %}
-            </ul>
-        {% endmacro %}
-
-        {{ render_toc(book.toc) }}
+          {% if item.children %} {{ render_toc(item.children) }} {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endmacro %} {{ render_toc(book.toc) }}
     </div>
 
     <!-- MAIN CONTENT -->
     <div id="main">
-        <div class="content-container">
-            <div class="book-content">
-                {{ current_chapter.content | safe }}
-            </div>
+      <div class="content-container">
+        <div class="book-content">{{ current_chapter.content | safe }}</div>
 
-            <div class="chapter-nav">
-                {% if prev_idx is not none %}
-                    <a href="/read/{{ book_id }}/{{ prev_idx }}" class="nav-btn">← Previous</a>
-                {% else %}
-                    <span class="nav-btn disabled">← Previous</span>
-                {% endif %}
+        <div class="chapter-nav">
+          {% if prev_idx is not none %}
+          <a href="/read/{{ book_id }}/{{ prev_idx }}" class="nav-btn"
+            >← Previous</a
+          >
+          {% else %}
+          <span class="nav-btn disabled">← Previous</span>
+          {% endif %}
 
-                <span style="color: #999; padding: 10px;">
-                    Section {{ chapter_index + 1 }} of {{ book.spine|length }}
-                </span>
+          <span style="color: #999; padding: 10px">
+            Section {{ chapter_index + 1 }} of {{ book.spine|length }}
+          </span>
 
-                {% if next_idx is not none %}
-                    <a href="/read/{{ book_id }}/{{ next_idx }}" class="nav-btn">Next →</a>
-                {% else %}
-                    <span class="nav-btn disabled">Next →</span>
-                {% endif %}
-            </div>
+          {% if next_idx is not none %}
+          <a href="/read/{{ book_id }}/{{ next_idx }}" class="nav-btn"
+            >Next →</a
+          >
+          {% else %}
+          <span class="nav-btn disabled">Next →</span>
+          {% endif %}
         </div>
+      </div>
     </div>
 
     <script>
-        // Helper to map TOC filenames to Spine Indices
-        // Pass the spine data from python to JS
-        const spineMap = {
-            {% for ch in book.spine %}
-            "{{ ch.href }}": {{ ch.order }},
-            {% endfor %}
-        };
+      // Helper to map TOC filenames to Spine Indices
+      // Pass the spine data from python to JS
+      const spineMap = {
+          {% for ch in book.spine %}
+          "{{ ch.href }}": {{ ch.order }},
+          {% endfor %}
+      };
 
-        function findAndGo(filename) {
-            // The TOC usually has specific filenames e.g. "text/part001.html"
-            // Sometimes it has anchors "text/part001.html#header"
-            // We strip the anchor to find the page index
-            const cleanFile = filename.split('#')[0];
-            const anchor = filename.split('#')[1];
+      function findAndGo(filename) {
+          // The TOC usually has specific filenames e.g. "text/part001.html"
+          // Sometimes it has anchors "text/part001.html#header"
+          // We strip the anchor to find the page index
+          const cleanFile = filename.split('#')[0];
+          const anchor = filename.split('#')[1];
 
-            const idx = spineMap[cleanFile];
+          const idx = spineMap[cleanFile];
 
-            if (idx !== undefined) {
-                let url = "/read/{{ book_id }}/" + idx;
-                // If there was an anchor, we could try to scroll to it,
-                // but simple page loads often lose anchor position without extra JS.
-                // Let's just go to the page.
-                window.location.href = url;
-            } else {
-                console.log("Could not find index for", filename);
-            }
-        }
+          if (idx !== undefined) {
+              let url = "/read/{{ book_id }}/" + idx;
+              // If there was an anchor, we could try to scroll to it,
+              // but simple page loads often lose anchor position without extra JS.
+              // Let's just go to the page.
+              window.location.href = url;
+          } else {
+              console.log("Could not find index for", filename);
+          }
+      }
     </script>
-</body>
+  </body>
 </html>
