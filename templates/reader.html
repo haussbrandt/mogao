@@ -4,9 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ book.metadata.title }}</title>
-    <link rel="stylesheet" href="{{ url_for('static', path='reader.css') }}" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='reader.css') }}?v=4"
+    />
   </head>
   <body>
+    <button id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
     <!-- SIDEBAR -->
     <div id="sidebar">
       <a href="/" class="nav-home">← Back to Library</a>
@@ -61,35 +65,72 @@
         </div>
       </div>
     </div>
-
+    <!-- prettier-ignore -->
     <script>
-      // Helper to map TOC filenames to Spine Indices
-      // Pass the spine data from python to JS
-      const spineMap = {
-          {% for ch in book.spine %}
-          "{{ ch.href }}": {{ ch.order }},
-          {% endfor %}
-      };
-
+		 // Helper to map TOC filenames to Spine Indices
+		 // Pass the spine data from python to JS
+		 const spineMap = {
+		  {% for ch in book.spine %}
+		  "{{ ch.href }}": {{ ch.order }},
+		  {% endfor %}
+		 };
+	</script>
+    <script>
       function findAndGo(filename) {
-          // The TOC usually has specific filenames e.g. "text/part001.html"
-          // Sometimes it has anchors "text/part001.html#header"
-          // We strip the anchor to find the page index
-          const cleanFile = filename.split('#')[0];
-          const anchor = filename.split('#')[1];
+        // The TOC usually has specific filenames e.g. "text/part001.html"
+        // Sometimes it has anchors "text/part001.html#header"
+        // We strip the anchor to find the page index
+        const cleanFile = filename.split("#")[0];
+        const anchor = filename.split("#")[1];
 
-          const idx = spineMap[cleanFile];
+        const idx = spineMap[cleanFile];
 
-          if (idx !== undefined) {
-              let url = "/read/{{ book_id }}/" + idx;
-              // If there was an anchor, we could try to scroll to it,
-              // but simple page loads often lose anchor position without extra JS.
-              // Let's just go to the page.
-              window.location.href = url;
-          } else {
-              console.log("Could not find index for", filename);
-          }
+        if (idx !== undefined) {
+          let url = "/read/{{ book_id }}/" + idx;
+          // If there was an anchor, we could try to scroll to it,
+          // but simple page loads often lose anchor position without extra JS.
+          // Let's just go to the page.
+          window.location.href = url;
+        } else {
+          console.log("Could not find index for", filename);
+        }
       }
+
+      function toggleSidebar() {
+        const sidebar = document.getElementById("sidebar");
+        sidebar.classList.toggle("active");
+
+        if (sidebar.classList.contains("active")) {
+          document
+            .getElementById("sidebar-toggle")
+            .classList.remove("scroll-hidden");
+        }
+      }
+      // Scroll Logic (Hide/Show Button) ---
+      let lastScrollTop = 0;
+      const toggleBtn = document.getElementById("sidebar-toggle");
+      const sidebar = document.getElementById("sidebar");
+      const mainContent = document.getElementById("main");
+
+      mainContent.addEventListener(
+        "scroll",
+        function () {
+          let scrollTop = mainContent.scrollTop;
+          // If sidebar is OPEN, never hide the button (so it can be closed)
+          if (sidebar.classList.contains("active")) return;
+          // Don't trigger on tiny movements
+          if (Math.abs(scrollTop - lastScrollTop) <= 5) return;
+          if (scrollTop > lastScrollTop && scrollTop > 50) {
+            // Scrolling DOWN -> Hide Button
+            toggleBtn.classList.add("scroll-hidden");
+          } else {
+            // Scrolling UP -> Show Button
+            toggleBtn.classList.remove("scroll-hidden");
+          }
+          lastScrollTop = scrollTop <= 0 ? 0 : scrollTop;
+        },
+        false,
+      );
     </script>
   </body>
 </html>

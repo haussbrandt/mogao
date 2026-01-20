@@ -131,3 +131,52 @@ a.toc-link.active {
   border-color: #ccc;
   color: #ccc;
 }
+
+#sidebar-toggle {
+  position: fixed;
+  left: 10px;
+  top: 10px;
+  z-index: 1001; /* Above sidebar */
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 1.2em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease-in-out;
+}
+
+#sidebar-toggle.scroll-hidden {
+  transform: translateY(-150%);
+}
+/* Mobile Layout */
+@media (max-width: 768px) {
+  /* Hide Sidebar by default on mobile */
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 1000;
+    transform: translateX(-100%); /* Move off-screen */
+    transition: transform 0.3s ease;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+    padding-top: 60px;
+  }
+
+  #sidebar.active {
+    transform: translateX(0);
+  }
+
+  /* Adjust main content so text isn't hidden behind the button */
+  #main .content-container {
+    padding-top: 60px;
+  }
+}
+
+@media (min-width: 769px) {
+  #sidebar-toggle {
+    display: none; /* Hide button on desktop */
+  }
+}
