@@ -119,7 +119,7 @@ async def delete_book(book_id: str):
 @app.get("/read/{book_id}", response_class=HTMLResponse)
 async def redirect_to_first_chapter(request: Request, book_id: str):
     """Helper to just go to chapter 0."""
-    return await read_chapter(request=request, book_id=book_id, chapter_index=0)
+    return RedirectResponse(url=f"/read/{book_id}/0")
 
 
 @app.get("/read/{book_id}/{chapter_index}", response_class=HTMLResponse)
