@@ -1,3 +1,4 @@
+import json
 import os
 import pickle
 from functools import lru_cache
@@ -35,6 +36,35 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
     except Exception as e:
         print(f"Error loading book {folder_name}: {e}")
         return None
+
+
+def get_progress_path(book_id: str) -> str:
+    """Returns the path to the progress.json file for a given book."""
+    safe_id = os.path.basename(book_id)
+    return os.path.join(LIBRARY_PATH, safe_id, "progress.json")
+
+
+def save_progress(book_id: str, chapter_index: int):
+    """Saves the current chapter index to the book's progress file."""
+    try:
+        path = get_progress_path(book_id)
+        with open(path, "w") as f:
+            json.dump({"chapter_index": chapter_index}, f)
+    except Exception as e:
+        print(f"Error saving progress for {book_id}: {e}")
+
+
+def load_progress(book_id: str) -> int:
+    """Loads the last read chapter index. Defaults to 0 if not found."""
+    try:
+        path = get_progress_path(book_id)
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
+                return data.get("chapter_index", 0)
+    except Exception as e:
+        print(f"Error loading progress for {book_id}: {e}")
+    return 0
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -116,9 +146,10 @@ async def delete_book(book_id: str):
 
 
 @app.get("/read/{book_id}", response_class=HTMLResponse)
-async def redirect_to_first_chapter(request: Request, book_id: str):
-    """Helper to just go to chapter 0."""
-    return RedirectResponse(url=f"/read/{book_id}/0")
+async def redirect_to_last_read(request: Request, book_id: str):
+    """Helper to go to the last read chapter."""
+    last_chapter_index = load_progress(book_id)
+    return RedirectResponse(url=f"/read/{book_id}/{last_chapter_index}")
 
 
 @app.get("/read/{book_id}/{chapter_index}", response_class=HTMLResponse)
@@ -131,6 +162,7 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
     if chapter_index < 0 or chapter_index >= len(book.spine):
         raise HTTPException(status_code=404, detail="Chapter not found")
 
+    save_progress(book_id, chapter_index)
     current_chapter = book.spine[chapter_index]
 
     # Calculate Prev/Next links

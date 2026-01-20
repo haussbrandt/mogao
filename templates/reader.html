@@ -153,6 +153,28 @@
         },
         false,
       );
+
+      // Scroll Position Memory
+      const scrollStorageKey = "mogao_scroll_{{ book_id }}_{{ chapter_index }}";
+
+      window.addEventListener("load", function () {
+        const savedPosition = localStorage.getItem(scrollStorageKey);
+        console.log(savedPosition);
+        if (savedPosition) {
+          mainContent.scrollTo({
+            top: parseInt(savedPosition, 10),
+            behavior: "auto",
+          });
+        }
+      });
+
+      let scrollTimeout;
+      mainContent.addEventListener("scroll", function () {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(function () {
+          localStorage.setItem(scrollStorageKey, mainContent.scrollTop);
+        }, 100);
+      });
     </script>
   </body>
 </html>
