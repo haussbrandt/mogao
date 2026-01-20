@@ -35,13 +35,13 @@ h1 {
 }
 .book-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 15px;
-  margin-top: 30px;
+  margin-top: 10px;
 }
 .book-card {
   background: white;
-  padding: 10px;
+  padding: 3px;
   border-radius: 1px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   transition: transform 0.2s;
@@ -49,6 +49,7 @@ h1 {
   flex-direction: column;
   height: 100%;
   position: relative;
+  cursor: pointer;
 }
 .book-title {
   font-size: 1.2em;
@@ -81,10 +82,15 @@ h1 {
   display: none !important;
 }
 
-.delete-btn {
+.delete-form {
   position: absolute;
   top: 10px;
   right: 10px;
+  z-index: 10;
+  margin: 0;
+}
+
+.delete-btn {
   /* Styling to make it a small circle */
   width: 24px;
   height: 24px;
@@ -102,7 +108,7 @@ h1 {
   /* Animation properties */
   opacity: 0; /* Hidden by default */
   transition:
-    opacity 0.2s ease,
+    opacity 0.2s ease;
     transform 0.1s ease;
   z-index: 10;
 }
@@ -118,10 +124,11 @@ h1 {
 
 .upload-btn:hover {
   background-color: #2ecc71;
+  transform: scale(1.1);
 }
 
 .book-cover {
-  height: 300px;
+  height: 260px;
   margin-bottom: 2px;
   overflow: hidden;
   display: flex;

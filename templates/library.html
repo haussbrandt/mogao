@@ -1,44 +1,61 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Library</title>
-	<link rel="stylesheet" href="{{ url_for('static', path='library.css') }}">
-</head>
-<body>
+    <link rel="stylesheet" href="{{ url_for('static', path='library.css') }}" />
+  </head>
+  <body>
     <div class="container">
-		<div class="header-row">
-            <h1>Library</h1>
-            <form action="/upload" method="post" enctype="multipart/form-data">
-                <label for="epub-upload" class="btn upload-btn">
-                    + Upload Book
-                </label>
-                <input id="epub-upload" class="hidden-input" type="file" name="file" accept=".epub" onchange="this.form.submit()">
-            </form>
+      <div class="header-row">
+        <h1>Library</h1>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+          <label for="epub-upload" class="btn upload-btn">
+            + Upload Book
+          </label>
+          <input
+            id="epub-upload"
+            class="hidden-input"
+            type="file"
+            name="file"
+            accept=".epub"
+            onchange="this.form.submit()"
+          />
+        </form>
+      </div>
+      <div class="book-grid">
+        {% for book in books %}
+        <div
+          class="book-card"
+          onclick="window.location.href='read/{{ book.id }}'"
+        >
+          <form
+            action="/delete/{{ book.id }}"
+            method="post"
+            class="delete-form"
+            onsubmit="
+              return confirm('Are you sure you want to delete this book?');
+            "
+            onclick="event.stopPropagation()"
+          >
+            <button type="submit" class="delete-btn">x</button>
+          </form>
+          <div class="book-cover">
+            {% if book.cover_url %}
+            <img src="{{ book.cover_url }}" alt="Cover for {{ book.title }}" />
+            {% else %}
+            <div class="no-cover">No Cover</div>
+            {% endif %}
+          </div>
+          <div class="book-title">{{ book.title }}</div>
+          <div class="book-meta">
+            {{ book.author }}<br />
+            {{ book.chapters }} chapters
+          </div>
         </div>
-        <div class="book-grid">
-            {% for book in books %}
-            <div class="book-card">
-				<form action="/delete/{{ book.id }}" method="post" onsubmit="return confirm('Are you sure you want to delete this book?');">
-					<button type="submit" class="btn delete-btn">x</button>
-				</form>
-				<div class="book-cover">
-					{% if book.cover_url %}
-                        <img src="{{ book.cover_url }}" alt="Cover for {{ book.title }}">
-                    {% else %}
-                        <div class="no-cover">No Cover</div>
-                    {% endif %}
-				</div>
-                <div class="book-title">{{ book.title }}</div>
-                <div class="book-meta">
-                    {{ book.author }}<br>
-                    {{ book.chapters }} chapters
-                </div>
-                <a href="/read/{{ book.id }}/0" class="btn">Read Book</a>
-            </div>
-            {% endfor %}
-        </div>
+        {% endfor %}
+      </div>
     </div>
-</body>
+  </body>
 </html>
