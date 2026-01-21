@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, Request, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from book import Book, Metadata, ChapterContent, TOCEntry, generate_book
 from constants import LIBRARY_PATH
@@ -44,27 +45,46 @@ def get_progress_path(book_id: str) -> str:
     return os.path.join(LIBRARY_PATH, safe_id, "progress.json")
 
 
-def save_progress(book_id: str, chapter_index: int):
-    """Saves the current chapter index to the book's progress file."""
+def save_progress(book_id: str, chapter_index: int, scroll_percentage: float = 0.0):
+    """Saves the current reading progress to the book's progress file."""
     try:
         path = get_progress_path(book_id)
         with open(path, "w") as f:
-            json.dump({"chapter_index": chapter_index}, f)
+            json.dump(
+                {
+                    "chapter_index": chapter_index,
+                    "scroll_percentage": scroll_percentage,
+                },
+                f,
+            )
     except Exception as e:
         print(f"Error saving progress for {book_id}: {e}")
 
 
-def load_progress(book_id: str) -> int:
-    """Loads the last read chapter index. Defaults to 0 if not found."""
+def load_progress(book_id: str):
+    """Loads the last read chapter reading progress from file."""
+    # TODO: Create a class for this, so there is never a possible mismatch between save and load
+    default_progress = {"chapter_index": 0, "scroll_percentage": 0.0}
     try:
         path = get_progress_path(book_id)
         if os.path.exists(path):
             with open(path, "r") as f:
-                data = json.load(f)
-                return data.get("chapter_index", 0)
+                return json.load(f)
     except Exception as e:
         print(f"Error loading progress for {book_id}: {e}")
-    return 0
+    return default_progress
+
+
+class ProgressRequest(BaseModel):
+    book_id: str
+    chapter_index: int
+    scroll_percentage: float
+
+
+@app.post("/api/save-progress")
+async def save_progress_api(data: ProgressRequest):
+    save_progress(data.book_id, data.chapter_index, data.scroll_percentage)
+    return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -148,7 +168,8 @@ async def delete_book(book_id: str):
 @app.get("/read/{book_id}", response_class=HTMLResponse)
 async def redirect_to_last_read(request: Request, book_id: str):
     """Helper to go to the last read chapter."""
-    last_chapter_index = load_progress(book_id)
+    progress = load_progress(book_id)
+    last_chapter_index = progress.get("chapter_index", 0)
     return RedirectResponse(url=f"/read/{book_id}/{last_chapter_index}")
 
 
@@ -162,9 +183,15 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
     if chapter_index < 0 or chapter_index >= len(book.spine):
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    save_progress(book_id, chapter_index)
-    current_chapter = book.spine[chapter_index]
+    progress = load_progress(book_id)
+    saved_chapter = progress.get("chapter_index", -1)
+    initial_scroll_percentage = 0.0
+    if saved_chapter == chapter_index:
+        initial_scroll_percentage = progress.get("scroll_percentage", 0.0)
 
+    save_progress(book_id, chapter_index, initial_scroll_percentage)
+
+    current_chapter = book.spine[chapter_index]
     # Calculate Prev/Next links
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
@@ -179,6 +206,7 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
             "book_id": book_id,
             "prev_idx": prev_idx,
             "next_idx": next_idx,
+            "initial_scroll_percentage": initial_scroll_percentage,
         },
     )
 

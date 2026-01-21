@@ -153,28 +153,46 @@
         },
         false,
       );
+    </script>
 
-      // Scroll Position Memory
-      const scrollStorageKey = "mogao_scroll_{{ book_id }}_{{ chapter_index }}";
+    <!-- prettier-ignore -->
+    <script>
+	// Scroll Position Memory
 
-      window.addEventListener("load", function () {
-        const savedPosition = localStorage.getItem(scrollStorageKey);
-        console.log(savedPosition);
-        if (savedPosition) {
-          mainContent.scrollTo({
-            top: parseInt(savedPosition, 10),
-            behavior: "auto",
-          });
-        }
-      });
+	 window.addEventListener("load", function () {
+      const savedPercentage = {{ initial_scroll_percentage }};
+      if (savedPercentage > 0) {
+		 const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
+		 if (maxScroll <= 0) return;
+		 const scrollPosition = (parseFloat(savedPercentage) / 100) * maxScroll;
 
-      let scrollTimeout;
-      mainContent.addEventListener("scroll", function () {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(function () {
-          localStorage.setItem(scrollStorageKey, mainContent.scrollTop);
-        }, 100);
-      });
+		 mainContent.scrollTo({
+		   top: scrollPosition,
+		   behavior: "auto",
+		 });
+	   }
+	 });
+
+	 let scrollTimeout;
+	 mainContent.addEventListener("scroll", function () {
+	   clearTimeout(scrollTimeout);
+	   scrollTimeout = setTimeout(function () {
+		 const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
+		 if (maxScroll <= 0) return;
+		 const scrollPercentage = (mainContent.scrollTop / maxScroll) * 100;
+		 if (!isFinite(scrollPercentage)) return;
+
+		 fetch("/api/save-progress", {
+			 method: "POST",
+			 headers: { "Content-Type": "application/json" },
+			 body: JSON.stringify({
+			   book_id: "{{ book_id }}",
+			   chapter_index: {{ chapter_index }},
+			   scroll_percentage: scrollPercentage,
+				})
+		   }).catch(err => console.error("Failed to save progress:", err));
+	   }, 100);
+	 });
     </script>
   </body>
 </html>
