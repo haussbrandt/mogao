@@ -1,7 +1,9 @@
+import glob
 import json
 import os
 import pickle
 from functools import lru_cache
+import re
 import shutil
 from typing import Optional
 import uuid
@@ -13,11 +15,14 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from book import Book, Metadata, ChapterContent, TOCEntry, generate_book
-from constants import LIBRARY_PATH
+from constants import DICT_PATH, FREQ_PATH, LIBRARY_PATH
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+CHINESE_DICT = {}
+CHINESE_FREQ = {}
 
 
 @lru_cache(maxsize=10)
@@ -85,6 +90,162 @@ class ProgressRequest(BaseModel):
 async def save_progress_api(data: ProgressRequest):
     save_progress(data.book_id, data.chapter_index, data.scroll_percentage)
     return {"status": "ok"}
+
+
+def convert_pinyin_tone(pinyin_str):
+    tone_map = {
+        "a": "āáǎàa",
+        "e": "ēéěèe",
+        "i": "īíǐìi",
+        "o": "ōóǒòo",
+        "u": "ūúǔùu",
+        "v": "ǖǘǚǜü",
+        "ü": "ǖǘǚǜü",
+    }
+    results = []
+    for word in pinyin_str.split():
+        match = re.match(r"^([a-zA-Zü:]+)([1-5])$", word)
+        if not match:
+            results.append(word)
+            continue
+        base, tone = match.groups()
+        tone_idx = int(tone) - 1
+        base = base.replace("u:", "ü").replace("v", "ü")
+        target_char = None
+        idx = -1
+        for char in ["a", "e", "o"]:
+            if char in base:
+                idx = base.find(char)
+                break
+        if idx == -1:
+            for i in range(len(base) - 1, -1, -1):
+                if base[i] in "iuü":
+                    idx = i
+                    break
+        if idx != -1 and tone_idx < 4:
+            char = base[idx]
+            replacement = tone_map[char][tone_idx]
+            base = base[:idx] + replacement + base[idx + 1 :]
+        results.append(base)
+    return "".join(results)
+
+
+def load_dictionary():
+    global CHINESE_DICT
+    if not os.path.exists(DICT_PATH):
+        print(f"Warning: {DICT_PATH} not found.")
+        return
+
+    print("Loading dictionary...")
+    pattern = re.compile(r"(\S+)\s+(\S+)\s+\[(.*?)\]\s+/(.*)/")
+
+    with open(DICT_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            match = pattern.match(line)
+            if match:
+                trad, simp, pinyin_raw, defs_str = match.groups()
+                entry = {
+                    "pinyin": convert_pinyin_tone(pinyin_raw),
+                    "definitions": defs_str.split("/"),
+                }
+                if simp not in CHINESE_DICT:
+                    CHINESE_DICT[simp] = []
+                CHINESE_DICT[simp].append(entry)
+    print(f"Dictionary loaded: {len(CHINESE_DICT)} entries.")
+
+
+def load_frequency():
+    """
+    Scans FREQ_DIR for Yomitan-formatted JSON files.
+    Calculates the Harmonic Mean of ranks across all files.
+    """
+    global CHINESE_FREQ
+    if not os.path.exists(FREQ_PATH):
+        print(f"Warning: {FREQ_PATH} directory not found.")
+        return
+
+    print("Loading frequency data (this might take a moment)...")
+
+    temp_scores = {}  # word -> [score1, score2, ...]
+
+    files = glob.glob(
+        os.path.join(FREQ_PATH, "**", "*term_meta_bank*.json"), recursive=True
+    )
+
+    if not files:
+        print("No frequency JSON files found in freqs/ folder.")
+        return
+
+    for file_path in files:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            for entry in data:
+                if isinstance(entry, list) and len(entry) >= 3 and entry[1] == "freq":
+                    term = entry[0]
+                    val = entry[2]
+
+                    if isinstance(val, (int, float)) and val > 0:
+                        if term not in temp_scores:
+                            temp_scores[term] = []
+                        temp_scores[term].append(val)
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+
+    # Calculate Harmonic Mean
+    count = 0
+    for term, scores in temp_scores.items():
+        try:
+            reciprocal_sum = sum(1.0 / s for s in scores)
+            if reciprocal_sum > 0:
+                hm = len(scores) / reciprocal_sum
+                CHINESE_FREQ[term] = int(hm)
+                count += 1
+        except Exception:
+            pass
+
+    print(f"Frequency data loaded: {count} unique terms.")
+
+
+# Load on startup
+load_dictionary()
+load_frequency()
+
+
+@app.get("/api/lookup")
+def lookup_word(text: str):
+    if not CHINESE_DICT:
+        return {"results": []}
+
+    clean_text = re.sub(r"\s+", "", text)
+    matches = []
+    limit = min(6, len(clean_text))
+
+    for i in range(limit, 0, -1):
+        candidate = clean_text[:i]
+        if candidate in CHINESE_DICT:
+            freq_val = CHINESE_FREQ.get(candidate)
+            freq_str = None
+
+            if freq_val is not None:
+                if freq_val < 10000:
+                    freq_str = str(freq_val)
+                else:
+                    freq_str = f"{freq_val:,}".replace(",", " ")
+
+            matches.append(
+                {
+                    "word": candidate,
+                    "entries": CHINESE_DICT[candidate],
+                    "frequency": freq_str,
+                    "length": i,
+                }
+            )
+
+    return {"results": matches}
 
 
 @app.get("/", response_class=HTMLResponse)
