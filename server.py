@@ -1,23 +1,69 @@
+import base64
 import glob
 import json
 import os
 import pickle
-from functools import lru_cache
 import re
+import secrets
 import shutil
-from typing import Optional
 import uuid
 
-from fastapi import FastAPI, File, Request, HTTPException, UploadFile
+from functools import lru_cache
+from typing import Optional
+
+import bcrypt
+
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Request, HTTPException, Response, UploadFile
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from book import Book, Metadata, ChapterContent, TOCEntry, generate_book
 from constants import DICT_PATH, FREQ_PATH, LIBRARY_PATH
 
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        auth_header = request.headers.get("Authorization")
+
+        if not auth_header or not auth_header.startswith("Basic "):
+            return Response(
+                content="Authentication required",
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
+            )
+
+        try:
+            credentials = base64.b64decode(auth_header[6:]).decode("utf-8")
+            username, password = credentials.split(":", 1)
+
+            username_correct = secrets.compare_digest(username, "admin")
+            password_correct = bcrypt.checkpw(
+                password.encode(), os.environ.get("MOGAO_ADMIN_HASH").encode()
+            )
+
+            if not (username_correct and password_correct):
+                return Response(
+                    content="Invalid credentials",
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
+                )
+        except Exception:
+            return Response(
+                content="Invalid authentication",
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
+            )
+
+        response = await call_next(request)
+        return response
+
+
 app = FastAPI()
+app.add_middleware(AuthMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -393,5 +439,8 @@ async def serve_image(book_id: str, image_name: str):
 
 if __name__ == "__main__":
     import uvicorn
+
+    load_dotenv()
+    print(os.environ.get("MOGAO_ADMIN_HASH"))
 
     uvicorn.run(app, host="0.0.0.0", port=8123)
