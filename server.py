@@ -441,6 +441,5 @@ if __name__ == "__main__":
     import uvicorn
 
     load_dotenv()
-    print(os.environ.get("MOGAO_ADMIN_HASH"))
 
     uvicorn.run(app, host="0.0.0.0", port=8123)
