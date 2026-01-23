@@ -216,6 +216,16 @@
       let currentHighlightSpans = [];
       let currentSentence = "";
 
+      let localDict = null;
+
+      fetch("/static/dict.json")
+        .then((r) => r.json())
+        .then((data) => {
+          localDict = data;
+          console.log("Dictionary loaded");
+        })
+        .catch((err) => console.error("Failed to load dictionary", err));
+
       function closePopup() {
         resetUI({ keepSpacer: false });
       }
@@ -459,8 +469,41 @@
         }, 50);
       }
 
+      function performLookup(text) {
+        if (!localDict) return [];
+
+        const cleanText = text.replace(/\s+/g, "");
+        const limit = Math.min(6, cleanText.length);
+        const results = [];
+
+        for (let i = limit; i > 0; i--) {
+          const candidate = cleanText.substring(0, i);
+          const entry = localDict[candidate];
+
+          if (entry) {
+            // Expand the minified JSON back to usable structure
+            let freqStr = null;
+            if (entry.f) {
+              if (entry.f < 10000) freqStr = "" + entry.f;
+              else freqStr = entry.f.toLocaleString("en-US").replace(/,/g, " ");
+            }
+
+            results.push({
+              word: candidate,
+              entries: entry.e.map((e) => ({ pinyin: e.p, definitions: e.d })),
+              frequency: freqStr,
+              length: i,
+            });
+          }
+        }
+        return results;
+      }
+
       // Main click handler
       bookContent.addEventListener("click", async function (e) {
+        if (!localDict) {
+          return;
+        }
         let range,
           x = e.clientX,
           y = e.clientY;
@@ -522,43 +565,35 @@
           '<div style="padding:30px; text-align:center; color:#999;">Searching...</div>';
         popup.classList.add("visible");
 
-        try {
-          const res = await fetch(
-            `/api/lookup?text=${encodeURIComponent(textChunk)}`,
-          );
-          const data = await res.json();
-          popBody.innerHTML = "";
-          if (data.results && data.results.length > 0) {
-            const longest = data.results[0];
-            highlightRange(startNode, startOffset, longest.length);
-            adjustScroll();
-            data.results.forEach((item) => {
-              const div = document.createElement("div");
-              div.className = "result-item";
+        const results = performLookup(textChunk);
 
-              let freqHtml = item.frequency
-                ? `<span class="freq-badge">#${item.frequency}</span>`
-                : "";
-              let ankiBtn = `<button class="anki-btn" onclick="addToAnki('${item.word}', this)">+</button>`;
+        popBody.innerHTML = "";
+        if (results && results.length > 0) {
+          const longest = results[0];
+          highlightRange(startNode, startOffset, longest.length);
+          adjustScroll();
+          results.forEach((item) => {
+            const div = document.createElement("div");
+            div.className = "result-item";
 
-              let html = `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
-              item.entries.forEach((entry) => {
-                let defsHtml = entry.definitions
-                  .map((d) => `<li>${d}</li>`)
-                  .join("");
-                html += `<div class="entry-block"><div class="entry-pinyin">${entry.pinyin}</div><ul class="entry-defs">${defsHtml}</ul></div>`;
-              });
-              div.innerHTML = html;
-              popBody.appendChild(div);
+            let freqHtml = item.frequency
+              ? `<span class="freq-badge">#${item.frequency}</span>`
+              : "";
+            let ankiBtn = `<button class="anki-btn" onclick="addToAnki('${item.word}', this)">+</button>`;
+
+            let html = `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
+            item.entries.forEach((entry) => {
+              let defsHtml = entry.definitions
+                .map((d) => `<li>${d}</li>`)
+                .join("");
+              html += `<div class="entry-block"><div class="entry-pinyin">${entry.pinyin}</div><ul class="entry-defs">${defsHtml}</ul></div>`;
             });
-          } else {
-            popBody.innerHTML =
-              '<div style="padding:30px; text-align:center; color:#999;">No definition found.</div>';
-          }
-        } catch (err) {
-          console.error(err);
+            div.innerHTML = html;
+            popBody.appendChild(div);
+          });
+        } else {
           popBody.innerHTML =
-            '<div style="padding:30px; text-align:center; color:red;">Connection Error</div>';
+            '<div style="padding:30px; text-align:center; color:#999;">No definition found.</div>';
         }
       });
 
