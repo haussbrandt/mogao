@@ -576,17 +576,19 @@
             const div = document.createElement("div");
             div.className = "result-item";
 
+			let html = "";
+            item.entries.forEach((entry) => {
+
             let freqHtml = item.frequency
               ? `<span class="freq-badge">#${item.frequency}</span>`
               : "";
-            let ankiBtn = `<button class="anki-btn" onclick="addToAnki('${item.word}', this)">+</button>`;
-
-            let html = `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
-            item.entries.forEach((entry) => {
+			let ankiBtn = `<button class="anki-btn" onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">+</button>`;
+				
+            html += `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
               let defsHtml = entry.definitions
                 .map((d) => `<li>${d}</li>`)
                 .join("");
-              html += `<div class="entry-block"><div class="entry-pinyin">${entry.pinyin}</div><ul class="entry-defs">${defsHtml}</ul></div>`;
+				html += `<div class="entry-block"><div class="entry-pinyin">${entry.pinyin}</div><ul class="entry-defs">${defsHtml}</ul></div>`;
             });
             div.innerHTML = html;
             popBody.appendChild(div);
@@ -597,11 +599,11 @@
         }
       });
 
-      window.addToAnki = function (word, btn) {
+      window.addToAnki = function (word, pinyin, btn) {
         btn.style.background = "#ccc";
         btn.textContent = "✓";
         btn.disabled = true;
-        showToast(`Word: ${word}\n\nSentence: ${currentSentence}`);
+		  showToast(`Word: ${word}\nPinyin: ${pinyin}\nSentence: ${currentSentence}`);
       };
 
       // Close popup on scroll
