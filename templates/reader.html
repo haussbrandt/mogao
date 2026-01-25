@@ -604,6 +604,15 @@
         btn.textContent = "✓";
         btn.disabled = true;
 		  showToast(`Word: ${word}\nPinyin: ${pinyin}\nSentence: ${currentSentence}`);
+		 fetch("/api/new-card ", {
+			 method: "POST",
+			 headers: { "Content-Type": "application/json" },
+			 body: JSON.stringify({
+				 word: word,
+				 pinyin: pinyin,
+				 sentence: currentSentence
+				})
+		   }).catch(err => console.error("Failed to send to Anki:", err));
       };
 
       // Close popup on scroll

@@ -4,6 +4,7 @@ import json
 import os
 import pickle
 import re
+import requests
 import secrets
 import shutil
 import uuid
@@ -138,6 +139,36 @@ class ProgressRequest(BaseModel):
 async def save_progress_api(data: ProgressRequest):
     save_progress(data.book_id, data.chapter_index, data.scroll_percentage)
     return {"status": "ok"}
+
+
+class NewCardRequest(BaseModel):
+    word: str
+    pinyin: str
+    sentence: str
+
+
+@app.post("/api/new-card")
+async def create_new_anki_card(data: NewCardRequest):
+    for item in data:
+        print(item)
+    return {"status": "ok"}
+
+
+def call_anki(action, **params):
+    return requests.post(
+        "http://localhost:8765", json={"action": action, "params": params, "version": 6}
+    )
+
+
+def get_all_words_from_anki_deck(deck_name: str, field_name: str) -> set[str]:
+    """
+    Sends requests to AnkiConnect to get all cards from the deck `deck_name` and returns a set of values of the field `field_name` from them
+    """
+    call_anki("sync")
+    card_ids = call_anki("findCards", query=f'deck:"{deck_name}"').json()["result"]
+    cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
+    words = {card["fields"][field_name]["value"] for card in cards}
+    return words
 
 
 def convert_pinyin_tone(pinyin_str):
@@ -443,5 +474,6 @@ if __name__ == "__main__":
     import uvicorn
 
     load_dotenv()
-
+    words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
+    print(words)
     uvicorn.run(app, host="0.0.0.0", port=8123)
