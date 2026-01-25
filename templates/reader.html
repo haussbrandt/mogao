@@ -6,7 +6,7 @@
     <title>{{ book.metadata.title }}</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='reader.css') }}?v=5"
+      href="{{ url_for('static', path='reader.css') }}?v=6"
     />
     <!-- Favicons -->
     <link
@@ -96,8 +96,6 @@
       <div class="popup-body" id="pop-body"></div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast"></div>
 
     <!-- prettier-ignore -->
     <script>
@@ -212,7 +210,8 @@
       const popBody = document.getElementById("pop-body");
       const contentContainer = document.querySelector(".content-container");
       const bookContent = document.querySelector(".book-content");
-      const toast = document.getElementById("toast");
+	  const deckWords = new Set({{ deck_words | tojson }}); 
+
       let currentHighlightSpans = [];
       let currentSentence = "";
 
@@ -244,16 +243,6 @@
         });
         currentHighlightSpans = [];
         if (!keepSpacer) bookContent.normalize();
-      }
-
-      let toastTimeout;
-      function showToast(msg) {
-        toast.textContent = msg;
-        toast.classList.add("visible");
-        clearTimeout(toastTimeout);
-        toastTimeout = setTimeout(() => {
-          toast.classList.remove("visible");
-        }, 5000);
       }
 
       function getTreeWalker(startNode) {
@@ -582,7 +571,12 @@
             let freqHtml = item.frequency
               ? `<span class="freq-badge">#${item.frequency}</span>`
               : "";
-			let ankiBtn = `<button class="anki-btn" onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">+</button>`;
+			let ankiBtn = ""
+			if (deckWords.has(item.word)) {
+				ankiBtn += `<button class="anki-btn" disabled onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">✓</button>`;
+			} else {
+				ankiBtn += `<button class="anki-btn" onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">+</button>`;
+			}
 				
             html += `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
               let defsHtml = entry.definitions
@@ -600,10 +594,8 @@
       });
 
       window.addToAnki = function (word, pinyin, btn) {
-        btn.style.background = "#ccc";
         btn.textContent = "✓";
         btn.disabled = true;
-		  showToast(`Word: ${word}\nPinyin: ${pinyin}\nSentence: ${currentSentence}`);
 		 fetch("/api/new-card ", {
 			 method: "POST",
 			 headers: { "Content-Type": "application/json" },

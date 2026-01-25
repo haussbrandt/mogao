@@ -149,8 +149,17 @@ class NewCardRequest(BaseModel):
 
 @app.post("/api/new-card")
 async def create_new_anki_card(data: NewCardRequest):
-    for item in data:
-        print(item)
+    note = {
+        "deckName": "Mandarin Sentence Mining",
+        "modelName": "Mandarin Sentence Mining",
+        "fields": {
+            "Simplified": data.word,
+            "Pinyin.1": data.pinyin,
+            "SentenceSimplified": data.sentence,
+        },
+        "tags": ["mogao"],
+    }
+    call_anki("addNote", note=note)
     return {"status": "ok"}
 
 
@@ -435,6 +444,7 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
     # Calculate Prev/Next links
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
+    deck_words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
 
     return templates.TemplateResponse(
         "reader.html",
@@ -447,6 +457,7 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
             "prev_idx": prev_idx,
             "next_idx": next_idx,
             "initial_scroll_percentage": initial_scroll_percentage,
+            "deck_words": list(deck_words),
         },
     )
 
@@ -474,6 +485,4 @@ if __name__ == "__main__":
     import uvicorn
 
     load_dotenv()
-    words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
-    print(words)
     uvicorn.run(app, host="0.0.0.0", port=8123)
