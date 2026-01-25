@@ -283,6 +283,10 @@ a.toc-link.active {
   transform: scale(0.95);
 }
 
+.anki-btn:disabled {
+  background-color: #ccc;
+}
+
 .entry-block {
   margin-top: 8px;
 }
