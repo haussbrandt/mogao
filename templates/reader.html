@@ -596,6 +596,7 @@
       window.addToAnki = function (word, pinyin, btn) {
         btn.textContent = "✓";
         btn.disabled = true;
+		deckWords.add(word);
 		 fetch("/api/new-card ", {
 			 method: "POST",
 			 headers: { "Content-Type": "application/json" },
