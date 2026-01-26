@@ -64,13 +64,33 @@ def load_dictionary():
             match = pattern.match(line)
             if match:
                 trad, simp, pinyin_raw, defs_str = match.groups()
+
+                # TODO: I think it's overcomplicated but it works, so I leave it for now
+                pinyin_regex = re.compile(r"([a-zA-Zü:]+)([1-5])")
+                definitions = []
+                for definition in defs_str.split("/"):
+                    processed_definition = pinyin_regex.sub(
+                        lambda m: convert_pinyin_tone(m.group(0).lower()), definition
+                    )
+                    definitions.append(processed_definition)
                 entry = {
-                    "pinyin": convert_pinyin_tone(pinyin_raw),
-                    "definitions": defs_str.split("/"),
+                    "pinyin": convert_pinyin_tone(pinyin_raw.lower()),
+                    "definitions": definitions,
                 }
                 if simp not in CHINESE_DICT:
                     CHINESE_DICT[simp] = []
-                CHINESE_DICT[simp].append(entry)
+                entry_exists = False
+                for dict_entry in CHINESE_DICT[simp]:
+                    if dict_entry["pinyin"] == entry["pinyin"]:
+                        dict_entry["definitions"].extend(entry["definitions"])
+                        entry_exists = True
+                        break
+                if not entry_exists:
+                    CHINESE_DICT[simp].append(entry)
+    from pprint import pprint
+
+    pprint(CHINESE_DICT["黑"])
+    pprint(CHINESE_DICT["了"])
     print(f"Dictionary loaded: {len(CHINESE_DICT)} entries.")
 
 
