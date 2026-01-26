@@ -13,3 +13,4 @@ samples/
 library/
 
 .env
+Caddyfile
