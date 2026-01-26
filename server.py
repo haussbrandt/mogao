@@ -30,7 +30,7 @@ from constants import LIBRARY_PATH
 
 
 class Postprocessor:
-    def __init__(self, batch_size=10, timeout=36) -> None:
+    def __init__(self, batch_size=10, timeout=3600) -> None:
         self.batch_size = batch_size
         self.timeout = timeout
         self.last_run_time = time.time()
@@ -76,7 +76,6 @@ class Postprocessor:
                     "source_word": card["fields"]["Simplified"]["value"],
                 }
             )
-        return False
         api_key = os.environ.get("GEMINI_API_KEY")
         results = call_gemini_batch(api_key, batch_data)
         if results:
