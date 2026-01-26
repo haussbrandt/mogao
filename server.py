@@ -1,9 +1,11 @@
+import asyncio
 import base64
 import glob
 import json
 import os
 import pickle
 import re
+import time
 import requests
 import secrets
 import shutil
@@ -24,7 +26,127 @@ from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from book import Book, Metadata, ChapterContent, TOCEntry, generate_book
-from constants import DICT_PATH, FREQ_PATH, LIBRARY_PATH
+from constants import LIBRARY_PATH
+
+
+class Postprocessor:
+    def __init__(self, batch_size=10, timeout=36) -> None:
+        self.batch_size = batch_size
+        self.timeout = timeout
+        self.last_run_time = time.time()
+        self.lock = asyncio.Lock()
+        self.timer_task = None
+
+    async def check_and_process(self):
+        async with self.lock:
+            card_ids = call_anki("findCards", query="tag:needs-processing").json()[
+                "result"
+            ]
+            print(len(card_ids))
+            current_time = time.time()
+            time_since_last = current_time - self.last_run_time
+
+            if len(card_ids) >= self.batch_size or (
+                len(card_ids) > 0 and time_since_last >= self.timeout
+            ):
+                await self.run_postprocessing(card_ids)
+                self.last_run_time = current_time
+
+                if self.timer_task:
+                    self.timer_task.cancel()
+                self.timer_task = asyncio.create_task(self.start_timer())
+            elif len(card_ids) > 0 and self.timer_task is None:
+                self.timer_task = asyncio.create_task(self.start_timer())
+
+    async def start_timer(self):
+        try:
+            await asyncio.sleep(self.timeout)
+            await self.check_and_process()
+        except asyncio.CancelledError:
+            pass
+
+    async def run_postprocessing(self, card_ids):
+        cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
+        batch_data = []
+        for card in cards:
+            batch_data.append(
+                {
+                    "id": card["note"],
+                    "source_text": card["fields"]["SentenceSimplified"]["value"],
+                    "source_word": card["fields"]["Simplified"]["value"],
+                }
+            )
+        return False
+        api_key = os.environ.get("GEMINI_API_KEY")
+        results = call_gemini_batch(api_key, batch_data)
+        if results:
+            for result in results:
+                try:
+                    note_id = result["id"]
+
+                    fields = {
+                        "SentenceSimplified": result["formatted_sentence"],
+                        "SentencePinyin.1": result["sentence_pinyin"],
+                        "SentenceMeaning": result["sentence_meaning"],
+                    }
+
+                    call_anki(
+                        "updateNoteFields", note={"id": note_id, "fields": fields}
+                    )
+                    call_anki(
+                        "removeTags",
+                        notes=[note_id],
+                        tags="needs-processing",
+                    )
+                    print(f"processed {note_id}")
+                except:
+                    pass
+            call_anki("sync")
+
+
+def call_gemini_batch(api_key, batch_data):
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+
+    # TODO: This prompt is kind of dumb, but it works
+    prompt_template = 'You are an expert Chinese language tutor. Analyze the following sentence and provide its English meaning, pinyin transcription and underline each occurence of the word using <u> and </u>. The sentence is: "{source_text}"\nThe word is "{source_word}"'
+    system_prompt = (
+        f"You are a helpful assistant. Process the following list of items.\n"
+        f"For each item, apply this logic: {prompt_template}\n\n"
+        f"Input Data (JSON): {json.dumps(batch_data, ensure_ascii=False)}"
+    )
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": system_prompt}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "id": {"type": "INTEGER"},
+                        "sentence_meaning": {"type": "STRING"},
+                        "sentence_pinyin": {"type": "STRING"},
+                        "formatted_sentence": {"type": "STRING"},
+                    },
+                    "required": [
+                        "id",
+                        "sentence_meaning",
+                        "sentence_pinyin",
+                        "formatted_sentence",
+                    ],
+                },
+            },
+        },
+    }
+    try:
+        response = requests.post(api_url, json=payload, timeout=60)
+        response.raise_for_status()
+
+        result_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(result_text)
+    except Exception as e:
+        print(f"Gemini API Error: {e}")
+        return []
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -70,8 +192,7 @@ app.add_middleware(AuthMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-CHINESE_DICT = {}
-CHINESE_FREQ = {}
+postprocessor = Postprocessor()
 
 
 @lru_cache(maxsize=10)
@@ -157,9 +278,10 @@ async def create_new_anki_card(data: NewCardRequest):
             "Pinyin.1": data.pinyin,
             "SentenceSimplified": data.sentence,
         },
-        "tags": ["mogao"],
+        "tags": ["mogao", "needs-processing"],
     }
     call_anki("addNote", note=note)
+    asyncio.create_task(postprocessor.check_and_process())
     return {"status": "ok"}
 
 
@@ -178,162 +300,6 @@ def get_all_words_from_anki_deck(deck_name: str, field_name: str) -> set[str]:
     cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
     words = {card["fields"][field_name]["value"] for card in cards}
     return words
-
-
-def convert_pinyin_tone(pinyin_str):
-    tone_map = {
-        "a": "āáǎàa",
-        "e": "ēéěèe",
-        "i": "īíǐìi",
-        "o": "ōóǒòo",
-        "u": "ūúǔùu",
-        "v": "ǖǘǚǜü",
-        "ü": "ǖǘǚǜü",
-    }
-    results = []
-    for word in pinyin_str.split():
-        match = re.match(r"^([a-zA-Zü:]+)([1-5])$", word)
-        if not match:
-            results.append(word)
-            continue
-        base, tone = match.groups()
-        tone_idx = int(tone) - 1
-        base = base.replace("u:", "ü").replace("v", "ü")
-        target_char = None
-        idx = -1
-        for char in ["a", "e", "o"]:
-            if char in base:
-                idx = base.find(char)
-                break
-        if idx == -1:
-            for i in range(len(base) - 1, -1, -1):
-                if base[i] in "iuü":
-                    idx = i
-                    break
-        if idx != -1 and tone_idx < 4:
-            char = base[idx]
-            replacement = tone_map[char][tone_idx]
-            base = base[:idx] + replacement + base[idx + 1 :]
-        results.append(base)
-    return "".join(results)
-
-
-def load_dictionary():
-    global CHINESE_DICT
-    if not os.path.exists(DICT_PATH):
-        print(f"Warning: {DICT_PATH} not found.")
-        return
-
-    print("Loading dictionary...")
-    pattern = re.compile(r"(\S+)\s+(\S+)\s+\[(.*?)\]\s+/(.*)/")
-
-    with open(DICT_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("#") or not line.strip():
-                continue
-            match = pattern.match(line)
-            if match:
-                trad, simp, pinyin_raw, defs_str = match.groups()
-                entry = {
-                    "pinyin": convert_pinyin_tone(pinyin_raw),
-                    "definitions": defs_str.split("/"),
-                }
-                if simp not in CHINESE_DICT:
-                    CHINESE_DICT[simp] = []
-                CHINESE_DICT[simp].append(entry)
-    print(f"Dictionary loaded: {len(CHINESE_DICT)} entries.")
-
-
-def load_frequency():
-    """
-    Scans FREQ_DIR for Yomitan-formatted JSON files.
-    Calculates the Harmonic Mean of ranks across all files.
-    """
-    global CHINESE_FREQ
-    if not os.path.exists(FREQ_PATH):
-        print(f"Warning: {FREQ_PATH} directory not found.")
-        return
-
-    print("Loading frequency data (this might take a moment)...")
-
-    temp_scores = {}  # word -> [score1, score2, ...]
-
-    files = glob.glob(
-        os.path.join(FREQ_PATH, "**", "*term_meta_bank*.json"), recursive=True
-    )
-
-    if not files:
-        print("No frequency JSON files found in freqs/ folder.")
-        return
-
-    for file_path in files:
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            for entry in data:
-                if isinstance(entry, list) and len(entry) >= 3 and entry[1] == "freq":
-                    term = entry[0]
-                    val = entry[2]
-
-                    if isinstance(val, (int, float)) and val > 0:
-                        if term not in temp_scores:
-                            temp_scores[term] = []
-                        temp_scores[term].append(val)
-        except Exception as e:
-            print(f"Error reading {file_path}: {e}")
-
-    # Calculate Harmonic Mean
-    count = 0
-    for term, scores in temp_scores.items():
-        try:
-            reciprocal_sum = sum(1.0 / s for s in scores)
-            if reciprocal_sum > 0:
-                hm = len(scores) / reciprocal_sum
-                CHINESE_FREQ[term] = int(hm)
-                count += 1
-        except Exception:
-            pass
-
-    print(f"Frequency data loaded: {count} unique terms.")
-
-
-# Load on startup
-load_dictionary()
-load_frequency()
-
-
-@app.get("/api/lookup")
-def lookup_word(text: str):
-    if not CHINESE_DICT:
-        return {"results": []}
-
-    clean_text = re.sub(r"\s+", "", text)
-    matches = []
-    limit = min(6, len(clean_text))
-
-    for i in range(limit, 0, -1):
-        candidate = clean_text[:i]
-        if candidate in CHINESE_DICT:
-            freq_val = CHINESE_FREQ.get(candidate)
-            freq_str = None
-
-            if freq_val is not None:
-                if freq_val < 10000:
-                    freq_str = str(freq_val)
-                else:
-                    freq_str = f"{freq_val:,}".replace(",", " ")
-
-            matches.append(
-                {
-                    "word": candidate,
-                    "entries": CHINESE_DICT[candidate],
-                    "frequency": freq_str,
-                    "length": i,
-                }
-            )
-
-    return {"results": matches}
 
 
 @app.get("/", response_class=HTMLResponse)

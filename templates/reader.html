@@ -571,6 +571,10 @@
             let freqHtml = item.frequency
               ? `<span class="freq-badge">#${item.frequency}</span>`
               : "";
+			let glossaryHtml = `<div style="text-align: left;"><ol>`
+			glossaryHtml += entry.definitions
+                .map((d) => `<li>${d}</li>`)
+                .join("");
 			let ankiBtn = ""
 			if (deckWords.has(item.word)) {
 				ankiBtn += `<button class="anki-btn" disabled onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">✓</button>`;
