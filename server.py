@@ -266,6 +266,7 @@ class NewCardRequest(BaseModel):
     word: str
     pinyin: str
     sentence: str
+    definitions: str
 
 
 @app.post("/api/new-card")
@@ -277,6 +278,7 @@ async def create_new_anki_card(data: NewCardRequest):
             "Simplified": data.word,
             "Pinyin.1": data.pinyin,
             "SentenceSimplified": data.sentence,
+            "Meaning": data.definitions,
         },
         "tags": ["mogao", "needs-processing"],
     }
