@@ -571,13 +571,20 @@
             let freqHtml = item.frequency
               ? `<span class="freq-badge">#${item.frequency}</span>`
               : "";
-			let ankiBtn = ""
-			if (deckWords.has(item.word)) {
-				ankiBtn += `<button class="anki-btn" disabled onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">✓</button>`;
-			} else {
-				ankiBtn += `<button class="anki-btn" onclick="addToAnki('${item.word}', '${entry.pinyin}', this)">+</button>`;
-			}
-				
+			let definitionsHTML = `<ul>`;
+			definitionsHTML += entry.definitions.map((d) => `<li>${d}</li>`).join("");
+			definitionsHTML += `</ul>`;
+			
+			const encodedDefinitions = btoa(unescape(encodeURIComponent(definitionsHTML)));
+			let ankiBtn = `<button 
+				class="anki-btn" 
+				${deckWords.has(item.word) ? 'disabled' : ''} 
+				data-word="${item.word}" 
+				data-pinyin="${entry.pinyin}"
+				data-defs="${encodedDefinitions}"
+				onclick="addToAnki(this)">
+				${deckWords.has(item.word) ? '✓' : '+'}
+				</button>`;
             html += `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
               let defsHtml = entry.definitions
                 .map((d) => `<li>${d}</li>`)
@@ -593,7 +600,10 @@
         }
       });
 
-      window.addToAnki = function (word, pinyin, btn) {
+      window.addToAnki = function (btn) {
+		const word = btn.getAttribute('data-word');
+		const pinyin = btn.getAttribute('data-pinyin');
+		const definitionsHTML = decodeURIComponent(escape(atob(btn.getAttribute('data-defs'))));
         btn.textContent = "✓";
         btn.disabled = true;
 		deckWords.add(word);
@@ -603,7 +613,8 @@
 			 body: JSON.stringify({
 				 word: word,
 				 pinyin: pinyin,
-				 sentence: currentSentence
+				 sentence: currentSentence,
+				 definitions: definitionsHTML
 				})
 		   }).catch(err => console.error("Failed to send to Anki:", err));
       };
