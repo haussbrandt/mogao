@@ -81,6 +81,11 @@ a.toc-link.active {
 }
 
 /* Content Styling (Basic normalization for the book HTML) */
+.book-content {
+  font-family: "Noto Serif SC", serif;
+  text-spacing-trim: trim-start;
+}
+
 .book-content img {
   max-width: 100%;
   height: auto;
