@@ -16,6 +16,7 @@ class Postprocessor:
 
     async def check_and_process(self):
         async with self.lock:
+            call_anki("sync")
             card_ids = call_anki("findCards", query="tag:needs-processing").json()[
                 "result"
             ]
