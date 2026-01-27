@@ -33,7 +33,7 @@ class Postprocessor:
     def __init__(self, batch_size=10, timeout=3600) -> None:
         self.batch_size = batch_size
         self.timeout = timeout
-        self.last_run_time = time.time()
+        self.last_timer_reset = time.time()
         self.lock = asyncio.Lock()
         self.timer_task = None
 
@@ -42,21 +42,31 @@ class Postprocessor:
             card_ids = call_anki("findCards", query="tag:needs-processing").json()[
                 "result"
             ]
-            print(len(card_ids))
-            current_time = time.time()
-            time_since_last = current_time - self.last_run_time
+            print(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for postprocessing: {len(card_ids)}"
+            )
 
+            current_time = time.time()
+            if len(card_ids) > 0 and self.timer_task is None:
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting a new timer")
+                self.last_timer_reset = current_time
+                self.timer_task = asyncio.create_task(self.start_timer())
+
+            time_since_last = current_time - self.last_timer_reset
             if len(card_ids) >= self.batch_size or (
                 len(card_ids) > 0 and time_since_last >= self.timeout
             ):
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting postprocessing")
                 await self.run_postprocessing(card_ids)
-                self.last_run_time = current_time
 
+                self.last_timer_reset = current_time
                 if self.timer_task:
                     self.timer_task.cancel()
-                self.timer_task = asyncio.create_task(self.start_timer())
-            elif len(card_ids) > 0 and self.timer_task is None:
-                self.timer_task = asyncio.create_task(self.start_timer())
+                self.timer_task = None
+            else:
+                print(
+                    f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Not running postprocessing yet, {time_since_last=}"
+                )
 
     async def start_timer(self):
         try:
@@ -283,6 +293,7 @@ async def create_new_anki_card(data: NewCardRequest):
     }
     call_anki("addNote", note=note)
     asyncio.create_task(postprocessor.check_and_process())
+    call_anki("sync")
     return {"status": "ok"}
 
 
