@@ -6,6 +6,7 @@ const deckWords = new Set(window.MOGAO_CONFIG.deckWords);
 
 let currentHighlightSpans = [];
 let currentSentence = "";
+let isAutoScrolling = false;
 
 function closePopup() {
   resetUI({ keepSpacer: false });
@@ -27,7 +28,6 @@ function resetUI({ keepSpacer } = { keepSpacer: false }) {
   if (!keepSpacer) bookContent.normalize();
 }
 
-let isAutoScrolling = false;
 function adjustScroll() {
   if (currentHighlightSpans.length === 0) return;
   const lastSpan = currentHighlightSpans[currentHighlightSpans.length - 1];
@@ -160,10 +160,4 @@ bookContent.addEventListener("click", async function (e) {
     popBody.innerHTML =
       '<div style="padding:30px; text-align:center; color:#999;">No definition found.</div>';
   }
-});
-
-// Close popup on scroll
-mainContent.addEventListener("scroll", () => {
-  if (isAutoScrolling) return;
-  if (popup.classList.contains("visible")) closePopup();
 });

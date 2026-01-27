@@ -48,3 +48,9 @@ mainContent.addEventListener(
   },
   false,
 );
+
+// Close popup on scroll
+mainContent.addEventListener("scroll", () => {
+  if (isAutoScrolling) return;
+  if (popup.classList.contains("visible")) closePopup();
+});
