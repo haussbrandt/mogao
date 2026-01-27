@@ -163,6 +163,7 @@ a.toc-link.active {
     transition: transform 0.3s ease;
     box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
     padding-top: 60px;
+    box-sizing: border-box;
   }
 
   #sidebar.active {
@@ -305,32 +306,6 @@ a.toc-link.active {
 }
 .entry-defs li {
   margin-bottom: 4px;
-}
-
-/* Toast Notification */
-#toast {
-  position: fixed;
-  top: 10%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 15px 20px;
-  border-radius: 8px;
-  font-family: system-ui, sans-serif;
-  font-size: 0.95em;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s;
-  z-index: 3000;
-  white-space: pre-wrap;
-  text-align: left;
-  max-width: 90%;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-  line-height: 1.5;
-}
-#toast.visible {
-  opacity: 1;
 }
 
 /* Add bottom padding when popup is visible */
