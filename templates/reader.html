@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ book.metadata.title }}</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='reader.css') }}?v=7"
+      href="{{ url_for('static', path='reader.css') }}?v=8"
     />
     <!-- Favicons -->
     <link
@@ -103,7 +103,7 @@
 			bookId: "{{ book_id }}",
 			chapterIndex: {{ chapter_index }},
 			initialScroll: {{ initial_scroll_percentage }},
-			deckWord: {{ deck_words | tojson }},
+			deckWords: {{ deck_words | tojson }},
 			spineMap: {
 			  {% for ch in book.spine %}
 			  "{{ ch.href }}": {{ ch.order }},
@@ -114,8 +114,8 @@
 	<script src="{{ url_for('static', path='navigation.js') }}"></script>
 	<script src="{{ url_for('static', path='progress.js') }}"></script>
 	<script src="{{ url_for('static', path='textprocessor.js') }}"></script>
-	<script src="{{ url_for('static', path='anki.js') }}"></script>
 	<script src="{{ url_for('static', path='dictionary.js') }}"></script>
+	<script src="{{ url_for('static', path='anki.js') }}"></script>
 	<script src="{{ url_for('static', path='reader.js') }}"></script>
   </body>
 </html>
