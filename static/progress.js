@@ -1,6 +1,116 @@
-// Scroll Position Memory
+let totalChars = 0;
+const charProgressDisplay = document.getElementById("char-progress");
+const bookContentElement = document.getElementsByClassName("book-content")[0];
+
+function countChineseChars(str) {
+  const matches = str.match(/[\u4e00-\u9fff]/g);
+  return matches ? matches.length : 0;
+}
+
+function countTotalCharacters() {
+  if (!bookContentElement) return 0;
+  const text =
+    bookContentElement.textContent || bookContentElement.innerText || "";
+  totalChars = countChineseChars(text);
+  return totalChars;
+}
+
+function countReadCharacters() {
+  if (!bookContentElement) return 0;
+
+  const mainEl = document.getElementById("main");
+  if (!mainEl) return 0;
+
+  const containerRect = mainEl.getBoundingClientRect();
+  const scrollTop = mainEl.scrollTop;
+  const viewportBottom = scrollTop + containerRect.height;
+
+  let charCount = 0;
+  const walker = document.createTreeWalker(
+    bookContentElement,
+    NodeFilter.SHOW_TEXT,
+    null,
+    false,
+  );
+
+  let node;
+  while ((node = walker.nextNode())) {
+    const text = node.textContent;
+    if (!text || text.trim().length === 0) continue;
+
+    const parent = node.parentElement;
+    if (!parent) continue;
+
+    // Get the bounding rect of the parent element
+    const parentRect = parent.getBoundingClientRect();
+    const parentTop = parentRect.top - containerRect.top + scrollTop;
+    const parentBottom = parentRect.bottom - containerRect.top + scrollTop;
+
+    // If the entire element is above the viewport bottom, count all its characters
+    if (parentBottom <= viewportBottom) {
+      charCount += countChineseChars(text);
+    }
+    // If the element is partially visible, we need to estimate or measure more precisely
+    else if (parentTop < viewportBottom) {
+      // Element spans the viewport bottom - need more precise measurement
+      const range = document.createRange();
+      range.selectNodeContents(node);
+
+      const textChars = [...text];
+      const textByteLength = text.length;
+
+      // Binary search to find the last visible character
+      let left = 0;
+      let right = textByteLength;
+      let lastVisible = 0;
+
+      while (left < right) {
+        const mid = Math.floor((left + right) / 2);
+        range.setStart(node, 0);
+        range.setEnd(node, mid);
+
+        const rects = range.getClientRects();
+        if (rects.length === 0) {
+          left = mid + 1;
+          continue;
+        }
+
+        const lastRect = rects[rects.length - 1];
+        const rectBottom = lastRect.bottom - containerRect.top + scrollTop;
+
+        if (rectBottom <= viewportBottom) {
+          lastVisible = mid;
+          left = mid + 1;
+        } else {
+          right = mid;
+        }
+      }
+
+      // Count characters up to lastVisible position
+      const visibleText = text.substring(0, lastVisible);
+      charCount += countChineseChars(visibleText);
+
+      // Once we hit a partially visible element, everything after is not visible
+      break;
+    } else {
+      // Element is completely below viewport - stop counting
+      break;
+    }
+  }
+
+  return charCount;
+}
+
+function updateCharProgress() {
+  if (!charProgressDisplay || totalChars == 0) return;
+  readChars = countReadCharacters();
+  charsPercentage = ((readChars * 100.0) / totalChars).toFixed(2);
+  charProgressDisplay.innerText = `${readChars} / ${totalChars} (${charsPercentage}%)`;
+}
 
 window.addEventListener("load", function () {
+  countTotalCharacters();
+  updateCharProgress();
   const savedPercentage = window.MOGAO_CONFIG.initialScroll;
   if (savedPercentage > 0) {
     const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
@@ -34,3 +144,5 @@ mainContent.addEventListener("scroll", function () {
     }).catch((err) => console.error("Failed to save progress:", err));
   }, 100);
 });
+
+mainContent.addEventListener("scroll", updateCharProgress);

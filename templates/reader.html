@@ -9,7 +9,7 @@
 	<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC&display=swap" rel="stylesheet">
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='reader.css') }}?v=8"
+      href="{{ url_for('static', path='reader.css') }}?v=9"
     />
     <!-- Favicons -->
     <link
@@ -99,6 +99,7 @@
       <div class="popup-body" id="pop-body"></div>
     </div>
 
+	<div id="char-progress"></div>
 
     <!-- prettier-ignore -->
     <script>
@@ -115,7 +116,7 @@
 		 };
 	</script>
 	<script src="{{ url_for('static', path='navigation.js') }}"></script>
-	<script src="{{ url_for('static', path='progress.js') }}"></script>
+	<script src="{{ url_for('static', path='progress.js') }}?v=2"></script>
 	<script src="{{ url_for('static', path='textprocessor.js') }}"></script>
 	<script src="{{ url_for('static', path='dictionary.js') }}"></script>
 	<script src="{{ url_for('static', path='anki.js') }}"></script>

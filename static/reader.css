@@ -317,3 +317,22 @@ a.toc-link.active {
 .content-container.has-popup {
   padding-bottom: 85vh;
 }
+
+#char-progress {
+  position: fixed;
+  bottom: 15px;
+  right: 20px;
+  font-family: -apple-system, sans-serif;
+  font-size: 0.85em;
+  color: #999;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 4px;
+  z-index: 1500;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+#dep-popup.visible ~ #char-progress {
+  opacity: 0;
+}
