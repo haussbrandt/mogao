@@ -5,7 +5,7 @@ function findAndGo(filename) {
   const cleanFile = filename.split("#")[0];
   const anchor = filename.split("#")[1];
 
-  const idx = spineMap[cleanFile];
+  const idx = window.MOGAO_CONFIG.spineMap[cleanFile];
 
   if (idx !== undefined) {
     let url = `/read/${window.MOGAO_CONFIG.bookId}/${idx}`;
