@@ -62,6 +62,7 @@ class Book:
     toc: list[TOCEntry]
     images: dict[str, str]
     processed_at: str
+    character_count: int = 0
     cover_image: str | None = None
 
 
@@ -203,6 +204,7 @@ def generate_book(path, library_dir) -> Book:
     if not toc_structure:
         toc_structure = get_fallback_toc(ebook)
 
+    total_characters = 0
     spine_chapters = []
 
     # We iterate over the spine (linear reading order)
@@ -254,6 +256,11 @@ def generate_book(path, library_dir) -> Book:
             else:
                 final_html = str(soup)
 
+            chapter_text = extract_plain_text(soup)
+            total_characters += sum(
+                1 for c in chapter_text if "\u4e00" <= c <= "\u9fff"
+            )
+
             # D. Create Object
             chapter = ChapterContent(
                 id=item_id,
@@ -271,6 +278,7 @@ def generate_book(path, library_dir) -> Book:
         toc_structure,
         image_map,
         datetime.now().isoformat(),
+        character_count=total_characters,
         cover_image=cover_image_filename,
     )
 

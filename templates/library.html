@@ -74,7 +74,15 @@
           <div class="book-title">{{ book.title }}</div>
           <div class="book-meta">
             {{ book.author }}<br />
-            {{ book.chapters }} chapters
+            {{ book.chapters }} chapters<br />
+            {{"{:,}".format(book.character_count).replace(',', ' ') }}
+            characters<br />
+            {% if book.tagged_cards_count == 1 %}
+            {{"{:,}".format(book.tagged_cards_count).replace(',', ' ') }} mined
+            card<br />
+            {% else %} {{"{:,}".format(book.tagged_cards_count).replace(',', '
+            ') }} mined cards<br />
+            {% endif %}
           </div>
         </div>
         {% endfor %}
