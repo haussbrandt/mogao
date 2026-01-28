@@ -18,6 +18,7 @@ window.addToAnki = function (btn) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      book_id: window.MOGAO_CONFIG.bookId,
       word: word,
       pinyin: pinyin,
       sentence: currentSentence,

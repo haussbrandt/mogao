@@ -43,6 +43,7 @@ async def save_progress_api(data: ProgressRequest):
 
 
 class NewCardRequest(BaseModel):
+    book_id: str
     word: str
     pinyin: str
     sentence: str
@@ -60,7 +61,7 @@ async def create_new_anki_card(data: NewCardRequest):
             "SentenceSimplified": data.sentence,
             "Meaning": data.definitions,
         },
-        "tags": ["mogao", "needs-processing"],
+        "tags": ["mogao", "needs-processing", "needs-audio", f"mogao-{data.book_id}"],
     }
     call_anki("addNote", note=note)
     asyncio.create_task(postprocessor.check_and_process())
@@ -77,6 +78,9 @@ async def library_view(request: Request):
         for item in os.listdir(LIBRARY_PATH):
             if os.path.isdir(os.path.join(LIBRARY_PATH, item)):
                 book = load_book_cached(item)
+                tagged_card_ids = call_anki(
+                    "findCards", query=f"tag:mogao-{item}"
+                ).json()["result"]
                 if book:
                     books.append(
                         {
@@ -84,6 +88,8 @@ async def library_view(request: Request):
                             "title": book.metadata.title,
                             "author": ", ".join(book.metadata.authors),
                             "chapters": len(book.spine),
+                            "character_count": getattr(book, "character_count", 0),
+                            "tagged_cards_count": len(tagged_card_ids),
                             "cover_url": f"/read/{item}/images/{book.cover_image}",
                         }
                     )
