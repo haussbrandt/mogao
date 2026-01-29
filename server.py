@@ -11,7 +11,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -19,7 +19,14 @@ from pydantic import BaseModel
 from anki import Postprocessor, call_anki, get_all_words_from_anki_deck
 from book import Book, ChapterContent, Metadata, TOCEntry, generate_book
 from constants import LIBRARY_PATH
-from library import load_book_cached, load_progress, save_progress
+from library import (
+    get_progress_path,
+    load_book_cached,
+    load_progress,
+    load_settings,
+    save_progress,
+    save_settings,
+)
 from middleware import AuthMiddleware
 
 
@@ -48,6 +55,24 @@ class ProgressRequest(BaseModel):
 async def save_progress_api(data: ProgressRequest):
     save_progress(data.book_id, data.chapter_index, data.scroll_percentage)
     return {"status": "ok"}
+
+
+class SaveSortRequest(BaseModel):
+    sort_order: str
+
+
+@app.post("/api/save-sort")
+async def save_sort_api(data: SaveSortRequest):
+    current_settings = load_settings()
+    current_settings["sort_order"] = data.sort_order
+    save_settings(current_settings)
+    return {"status": "ok"}
+
+
+@app.get("/api/get-settings", response_class=JSONResponse)
+async def get_settings_api():
+    current_settings = load_settings()
+    return JSONResponse(current_settings)
 
 
 class NewCardRequest(BaseModel):
@@ -86,24 +111,61 @@ async def library_view(request: Request):
         for item in os.listdir(LIBRARY_PATH):
             if os.path.isdir(os.path.join(LIBRARY_PATH, item)):
                 book = load_book_cached(item)
+                if not book:
+                    continue
+
                 tagged_card_ids = call_anki(
                     "findCards", query=f"tag:mogao-{item}"
                 ).json()["result"]
-                if book:
-                    books.append(
-                        {
-                            "id": item,
-                            "title": book.metadata.title,
-                            "author": ", ".join(book.metadata.authors),
-                            "chapters": len(book.spine),
-                            "character_count": getattr(book, "character_count", 0),
-                            "tagged_cards_count": len(tagged_card_ids),
-                            "cover_url": f"/read/{item}/images/{book.cover_image}",
-                        }
-                    )
 
+                progress_path = get_progress_path(item)
+                last_read_time = (
+                    os.path.getmtime(progress_path)
+                    if os.path.exists(progress_path)
+                    else 0
+                )
+
+                books.append(
+                    {
+                        "id": item,
+                        "title": book.metadata.title,
+                        "author": ", ".join(book.metadata.authors),
+                        "chapters": len(book.spine),
+                        "character_count": getattr(book, "character_count", 0),
+                        "tagged_cards_count": len(tagged_card_ids),
+                        "cover_url": f"/read/{item}/images/{book.cover_image}",
+                        "processed_at": book.processed_at,
+                        "last_read_time": last_read_time,
+                    }
+                )
+
+    # Pre-sort before sending to client to avoid a "flicker" where the books are loaded and then quickly sorted and re-ordered
+    # TODO: Can it be done cleaner? I don't like that this is being done twice in two different places and languages
+    settings = load_settings()
+    current_sort = settings.get("sort_order", "title")
+    if current_sort == "title":
+        books.sort(key=lambda x: x["title"].lower())
+    elif current_sort == "title_rev":
+        books.sort(key=lambda x: x["title"].lower(), reverse=True)
+    elif current_sort == "last_read":
+        books.sort(key=lambda x: x["last_read_time"], reverse=True)
+    elif current_sort == "last_read_rev":
+        books.sort(key=lambda x: x["last_read_time"])
+    elif current_sort == "date_added":
+        books.sort(key=lambda x: x["processed_at"], reverse=True)
+    elif current_sort == "date_added_rev":
+        books.sort(key=lambda x: x["processed_at"])
+    elif current_sort == "chars":
+        books.sort(key=lambda x: x["character_count"], reverse=True)
+    elif current_sort == "chars_rev":
+        books.sort(key=lambda x: x["character_count"])
+    elif current_sort == "mined":
+        books.sort(key=lambda x: x["tagged_cards_count"], reverse=True)
+    elif current_sort == "mined_rev":
+        books.sort(key=lambda x: x["tagged_cards_count"])
     return templates.TemplateResponse(
-        "library.html", {"request": request, "books": books}
+        "library.html",
+        {"request": request, "books": books},
     )
 
 

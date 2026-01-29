@@ -61,3 +61,27 @@ def load_progress(book_id: str):
     except Exception as e:
         print(f"Error loading progress for {book_id}: {e}")
     return default_progress
+
+
+def get_settings_path() -> str:
+    return os.path.join(LIBRARY_PATH, "settings.json")
+
+
+def load_settings() -> dict:
+    try:
+        path = get_settings_path()
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading settings: {e}")
+    return {}
+
+
+def save_settings(settings: dict):
+    try:
+        path = get_settings_path()
+        with open(path, "w") as f:
+            json.dump(settings, f)
+    except Exception as e:
+        print(f"Error saving settings: {e}")
