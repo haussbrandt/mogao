@@ -2,6 +2,8 @@ let totalChars = 0;
 const charProgressDisplay = document.getElementById("char-progress");
 const bookContentElement = document.getElementsByClassName("book-content")[0];
 
+let ignoreNextScroll = false;
+
 function countChineseChars(str) {
   const matches = str.match(/[\u4e00-\u9fff]/g);
   return matches ? matches.length : 0;
@@ -117,15 +119,22 @@ window.addEventListener("load", function () {
     if (maxScroll <= 0) return;
     const scrollPosition = (parseFloat(savedPercentage) / 100) * maxScroll;
 
+	ignoreNextScroll = true;
     mainContent.scrollTo({
       top: scrollPosition,
       behavior: "auto",
     });
+
+	setTimeout(() => {ignoreNextScroll = false;}, 50);
   }
 });
 
 let scrollTimeout;
 mainContent.addEventListener("scroll", function () {
+  if (ignoreNextScroll) {
+	  ignoreNextScroll = false;
+	  return;
+  }
   clearTimeout(scrollTimeout);
   scrollTimeout = setTimeout(function () {
     const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
@@ -144,5 +153,9 @@ mainContent.addEventListener("scroll", function () {
     }).catch((err) => console.error("Failed to save progress:", err));
   }, 100);
 });
+
+window.addEventListener("beforeunload", function() {
+	clearTimeout(scrollTimeout);
+})
 
 mainContent.addEventListener("scroll", updateCharProgress);
