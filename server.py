@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
+load_dotenv()
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
@@ -292,5 +293,4 @@ async def serve_image(book_id: str, image_name: str):
 if __name__ == "__main__":
     import uvicorn
 
-    load_dotenv()
     uvicorn.run(app, host="0.0.0.0", port=8123)
