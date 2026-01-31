@@ -1,9 +1,12 @@
 import asyncio
+import base64
 import json
 import os
 import time
 
+import ffmpeg
 import requests
+from elevenlabs.client import ElevenLabs
 
 
 class Postprocessor:
@@ -13,29 +16,37 @@ class Postprocessor:
         self.last_timer_reset = time.time()
         self.lock = asyncio.Lock()
         self.timer_task = None
+        self.eleven_client = ElevenLabs(api_key=os.environ.get("ELEVENLABS_API_KEY"))
 
     async def check_and_process(self):
         async with self.lock:
             call_anki("sync")
-            card_ids = call_anki("findCards", query="tag:needs-processing").json()[
+            processing_card_ids = call_anki(
+                "findCards", query="tag:needs-processing"
+            ).json()["result"]
+            print(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for postprocessing: {len(processing_card_ids)}"
+            )
+
+            audio_card_ids = call_anki("findCards", query="tag:needs-audio").json()[
                 "result"
             ]
             print(
-                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for postprocessing: {len(card_ids)}"
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for audio: {len(audio_card_ids)}"
             )
 
             current_time = time.time()
-            if len(card_ids) > 0 and self.timer_task is None:
+            if len(processing_card_ids) > 0 and self.timer_task is None:
                 print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting a new timer")
                 self.last_timer_reset = current_time
                 self.timer_task = asyncio.create_task(self.start_timer())
 
             time_since_last = current_time - self.last_timer_reset
-            if len(card_ids) >= self.batch_size or (
-                len(card_ids) > 0 and time_since_last >= self.timeout
+            if len(processing_card_ids) >= self.batch_size or (
+                len(processing_card_ids) > 0 and time_since_last >= self.timeout
             ):
                 print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting postprocessing")
-                await self.run_postprocessing(card_ids)
+                await self.run_gemini_postprocessing(processing_card_ids)
 
                 self.last_timer_reset = current_time
                 if self.timer_task:
@@ -46,6 +57,9 @@ class Postprocessor:
                     f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Not running postprocessing yet, {time_since_last=}"
                 )
 
+            # Add audio every time - it's not possible to batch it for lower usage
+            await self.run_audio_postprocessing(audio_card_ids)
+
     async def start_timer(self):
         try:
             await asyncio.sleep(self.timeout)
@@ -53,7 +67,7 @@ class Postprocessor:
         except asyncio.CancelledError:
             pass
 
-    async def run_postprocessing(self, card_ids):
+    async def run_gemini_postprocessing(self, card_ids):
         cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
         batch_data = []
         for card in cards:
@@ -89,6 +103,75 @@ class Postprocessor:
                 except:
                     pass
             call_anki("sync")
+
+    async def run_audio_postprocessing(self, card_ids):
+        cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
+        for card in cards:
+            try:
+                note_id = card["note"]
+                source_text = card["fields"]["SentenceSimplified"]["value"]
+                source_word = card["fields"]["Simplified"]["value"]
+                print(f"adding audio to {note_id}")
+                sentence_clean = source_text.replace("<u>", "").replace("</u>", "")
+                response = self.eleven_client.text_to_speech.convert_with_timestamps(
+                    voice_id="pFZP5JQG7iQjIQuC4Bku", text=sentence_clean
+                )
+                audio64 = response.audio_base_64
+
+                sentence = "".join(response.alignment.characters)
+                start_index = sentence.index(source_word)
+                end_index = start_index + len(source_word) - 1
+
+                start_sec = response.alignment.character_start_times_seconds[
+                    start_index
+                ]
+                end_sec = response.alignment.character_end_times_seconds[end_index]
+
+                os.makedirs("/tmp/mogao", exist_ok=True)
+                with open(f"/tmp/mogao/{note_id}.mp3", "wb") as f:
+                    f.write(base64.b64decode(audio64))
+
+                input_file = ffmpeg.input(
+                    f"/tmp/mogao/{note_id}.mp3", ss=start_sec, to=end_sec
+                )
+                output = ffmpeg.output(
+                    input_file, f"/tmp/mogao/{source_word}.mp3"
+                ).overwrite_output()
+                ffmpeg.run(output, quiet=True)
+
+                call_anki(
+                    "updateNoteFields",
+                    note={
+                        "id": note_id,
+                        "fields": {},
+                        "audio": [
+                            {
+                                "path": f"/tmp/mogao/{note_id}.mp3",
+                                "filename": f"{note_id}.mp3",
+                                "fields": ["SentenceAudio"],
+                            },
+                            {
+                                "path": f"/tmp/mogao/{source_word}.mp3",
+                                "filename": f"{source_word}.mp3",
+                                "fields": ["Audio"],
+                            },
+                        ],
+                    },
+                )
+                call_anki(
+                    "removeTags",
+                    notes=[note_id],
+                    tags="needs-audio",
+                )
+                print(f"added audio to {note_id}")
+                if os.path.exists(f"/tmp/mogao/{source_word}.mp3"):
+                    os.remove(f"/tmp/mogao/{source_word}.mp3")
+                if os.path.exists(f"/tmp/mogao/{note_id}.mp3"):
+                    os.remove(f"/tmp/mogao/{note_id}.mp3")
+            except:
+                pass
+
+        call_anki("sync")
 
 
 def call_gemini_batch(api_key, batch_data):
