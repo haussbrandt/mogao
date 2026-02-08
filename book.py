@@ -185,7 +185,11 @@ def generate_book(path, library_dir) -> Book:
                 [c for c in original_fname if c.isalpha() or c.isdigit() or c in "._-"]
             ).strip()
 
-            if item.get_type() == ebooklib.ITEM_COVER or "cover" in safe_fname:
+            if (
+                item.get_type() == ebooklib.ITEM_COVER
+                or "cover" in safe_fname
+                or item.id == "cover-image"
+            ):
                 cover_image_filename = safe_fname
 
             # Save to disk
