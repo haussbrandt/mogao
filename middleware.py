@@ -9,6 +9,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         auth_header = request.headers.get("Authorization")
+        if request.url.path in ["/static/site.webmanifest"]:
+            return await call_next(request)
 
         if not auth_header or not auth_header.startswith("Basic "):
             return Response(
