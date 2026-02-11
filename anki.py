@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from functools import lru_cache
 import json
 import os
 import time
@@ -104,6 +105,13 @@ class Postprocessor:
                     pass
             call_anki("sync")
 
+    @lru_cache(maxsize=20)
+    def call_elevenlabs_api(self, sentence_clean):
+        response = self.eleven_client.text_to_speech.convert_with_timestamps(
+            voice_id="pFZP5JQG7iQjIQuC4Bku", text=sentence_clean
+        )
+        return response
+
     async def run_audio_postprocessing(self, card_ids):
         cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
         for card in cards:
@@ -113,9 +121,7 @@ class Postprocessor:
                 source_word = card["fields"]["Simplified"]["value"]
                 print(f"adding audio to {note_id}")
                 sentence_clean = source_text.replace("<u>", "").replace("</u>", "")
-                response = self.eleven_client.text_to_speech.convert_with_timestamps(
-                    voice_id="pFZP5JQG7iQjIQuC4Bku", text=sentence_clean
-                )
+                response = self.call_elevenlabs_api(sentence_clean)
                 audio64 = response.audio_base_64
 
                 sentence = "".join(response.alignment.characters)
