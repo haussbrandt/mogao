@@ -90,6 +90,9 @@ def clean_html_content(soup: BeautifulSoup) -> BeautifulSoup:
     for tag in soup.find_all("input"):
         tag.decompose()
 
+    for tag in soup.find_all("span"):
+        tag.unwrap()
+
     return soup
 
 
