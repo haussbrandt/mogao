@@ -23,6 +23,14 @@ function toggleSidebar() {
     document.getElementById("sidebar-toggle").classList.remove("scroll-hidden");
   }
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const activeLink = document.querySelector("#sidebar .toc-link.active");
+  if (activeLink) {
+    activeLink.scrollIntoView({ block: "center", behavior: "instant" });
+  }
+});
+
 // Scroll Logic (Hide/Show Button) ---
 let lastScrollTop = 0;
 const toggleBtn = document.getElementById("sidebar-toggle");
