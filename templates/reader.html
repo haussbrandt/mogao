@@ -112,7 +112,8 @@
 			  {% for ch in book.spine %}
 			  "{{ ch.href }}": {{ ch.order }},
 			  {% endfor %}
-			}
+			},
+			chapter_lengths: {{ book.spine | map(attribute='chapter_characters') | list | tojson }}
 		 };
 	</script>
 	<script src="{{ url_for('static', path='navigation.js') }}"></script>
