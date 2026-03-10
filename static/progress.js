@@ -9,6 +9,7 @@ function countChineseChars(str) {
   return matches ? matches.length : 0;
 }
 
+// TODO: It's now precalculated when adding a book, so this can be removed
 function countTotalCharacters() {
   if (!bookContentElement) return 0;
   const text =
@@ -119,21 +120,23 @@ window.addEventListener("load", function () {
     if (maxScroll <= 0) return;
     const scrollPosition = (parseFloat(savedPercentage) / 100) * maxScroll;
 
-	ignoreNextScroll = true;
+    ignoreNextScroll = true;
     mainContent.scrollTo({
       top: scrollPosition,
       behavior: "auto",
     });
 
-	setTimeout(() => {ignoreNextScroll = false;}, 50);
+    setTimeout(() => {
+      ignoreNextScroll = false;
+    }, 50);
   }
 });
 
 let scrollTimeout;
 mainContent.addEventListener("scroll", function () {
   if (ignoreNextScroll) {
-	  ignoreNextScroll = false;
-	  return;
+    ignoreNextScroll = false;
+    return;
   }
   clearTimeout(scrollTimeout);
   scrollTimeout = setTimeout(function () {
@@ -154,8 +157,8 @@ mainContent.addEventListener("scroll", function () {
   }, 100);
 });
 
-window.addEventListener("beforeunload", function() {
-	clearTimeout(scrollTimeout);
-})
+window.addEventListener("beforeunload", function () {
+  clearTimeout(scrollTimeout);
+});
 
 mainContent.addEventListener("scroll", updateCharProgress);

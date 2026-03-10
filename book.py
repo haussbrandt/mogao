@@ -42,6 +42,7 @@ class ChapterContent:
     content: str  # Cleaned HTML with rewritten image paths
     text: str  # Plain text for search/translation
     order: int  # Linear reading order
+    chapter_characters: int  # Number of Chinese characters in the chapter
 
 
 @dataclass
@@ -264,10 +265,10 @@ def generate_book(path, library_dir) -> Book:
                 final_html = str(soup)
 
             chapter_text = extract_plain_text(soup)
-            total_characters += sum(
+            chapter_characters = sum(
                 1 for c in chapter_text if "\u4e00" <= c <= "\u9fff"
             )
-
+            total_characters += chapter_characters
             # D. Create Object
             chapter = ChapterContent(
                 id=item_id,
@@ -276,6 +277,7 @@ def generate_book(path, library_dir) -> Book:
                 content=final_html,
                 text=extract_plain_text(soup),
                 order=i,
+                chapter_characters=chapter_characters,
             )
             spine_chapters.append(chapter)
 
