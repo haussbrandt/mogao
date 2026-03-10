@@ -104,11 +104,30 @@ function countReadCharacters() {
   return charCount;
 }
 
+function formatNumber(num) {
+  const str = String(num);
+
+  if (str.length <= 4) return str;
+
+  return str.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
 function updateCharProgress() {
   if (!charProgressDisplay || totalChars == 0) return;
   readChars = countReadCharacters();
   charsPercentage = ((readChars * 100.0) / totalChars).toFixed(2);
-  charProgressDisplay.innerText = `${readChars} / ${totalChars} (${charsPercentage}%)`;
+
+  previousChaptersChars = window.MOGAO_CONFIG.chapter_lengths
+    .slice(0, window.MOGAO_CONFIG.chapterIndex)
+    .reduce((sum, current) => sum + current, 0);
+  readBookChars = readChars + previousChaptersChars;
+  totalBookChars = window.MOGAO_CONFIG.chapter_lengths.reduce(
+    (sum, current) => sum + current,
+    0,
+  );
+  charsBookPercentage = ((readBookChars * 100.0) / totalBookChars).toFixed(2);
+
+  charProgressDisplay.innerText = `${formatNumber(readChars)} / ${formatNumber(totalChars)} (${charsPercentage}%)\n${formatNumber(readBookChars)} / ${formatNumber(totalBookChars)} (${charsBookPercentage}%)`;
 }
 
 window.addEventListener("load", function () {
