@@ -1,3 +1,5 @@
+@import url("variables.css");
+
 * {
   box-sizing: border-box;
 }
@@ -5,7 +7,7 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
-  background: #f4f4f9;
+  background: var(--bg-page);
   margin: 0;
   padding: clamp(16px, 4vw, 40px);
 }
@@ -16,7 +18,7 @@ body {
 .header-row {
   display: flex;
   align-items: center;
-  border-bottom: 2px solid #ddd;
+  border-bottom: 2px solid var(--border);
   padding-bottom: 10px;
   margin-bottom: 30px;
 }
@@ -28,8 +30,8 @@ body {
 }
 
 h1 {
-  color: #333;
-  border-bottom: 2px solid #ddd;
+  color: var(--text-body);
+  border-bottom: 2px solid var(--border);
   padding-bottom: 10px;
 }
 .book-grid {
@@ -39,10 +41,10 @@ h1 {
   margin-top: 10px;
 }
 .book-card {
-  background: white;
+  background: var(--bg-base);
   padding: 3px;
   border-radius: 1px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 5px var(--shadow);
   transition: transform 0.2s;
   display: flex;
   flex-direction: column;
@@ -53,11 +55,11 @@ h1 {
 .book-title {
   font-size: 1.2em;
   font-weight: bold;
-  color: #2c3e50;
+  color: var(--text-emphasis);
   margin-bottom: 10px;
 }
 .book-meta {
-  color: #666;
+  color: var(--text-muted);
   font-size: 0.9em;
   margin-bottom: 15px;
   margin-top: auto;
@@ -66,8 +68,8 @@ h1 {
 .btn {
   white-space: nowrap;
   display: inline-block;
-  background: #3498db;
-  color: white;
+  background: var(--accent-interactive);
+  color: var(--bg-base);
   text-decoration: none;
   padding: 8px 15px;
   border-radius: 4px;
@@ -76,7 +78,7 @@ h1 {
   align-self: flex-start;
 }
 .btn:hover {
-  background: #2980b9;
+  background: var(--accent-interactive-hover);
 }
 
 .hidden-input {
@@ -97,8 +99,8 @@ h1 {
   height: 24px;
   border-radius: 50%;
   border: none;
-  background-color: #ff4d4d;
-  color: white;
+  background-color: var(--accent-danger);
+  color: var(--bg-base);
   font-size: 18px;
   font-weight: bold;
   line-height: 22px; /* Center the × verticaly */
@@ -120,11 +122,11 @@ h1 {
 }
 
 .delete-btn:hover {
-  background-color: #c0392b;
+  background-color: var(--accent-danger-hover);
 }
 
 .upload-btn:hover {
-  background-color: #2ecc71;
+  background-color: var(--accent-success);
   transform: scale(1.1);
 }
 
@@ -144,7 +146,7 @@ h1 {
 }
 
 .no-cover {
-  color: #aaa;
+  color: var(--text-disabled);
   font-weight: bold;
   font-size: 0.9em;
 }
@@ -160,16 +162,15 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   
-  background-color: white;
-  border: 1px solid #ccc;
+  background-color: var(--bg-base);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.5rem 0.5rem 0.5rem 0.5rem;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: #333;
+  color: var(--text-body);
   cursor: pointer;
   
-  /* 3. Add Custom Arrow (SVG Data URI) */
   background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27292.4%27%20height%3D%27292.4%27%3E%3Cpath%20fill%3D%27%23333%27%20d%3D%27M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%27%2F%3E%3C%2Fsvg%3E");
   background-repeat: no-repeat;
   background-position: right 0.7rem top 50%;
@@ -180,15 +181,15 @@ select {
 }
 
 select:focus {
-  border-color: #007bff; /* Highlight color on focus */
+  border-color: var(--accent-focus);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+  box-shadow: 0 0 0 3px var(--accent-focus-ring);
 }
 
 .controls-wrapper {
-	margin-left: auto;
-	display: flex;
-	gap: 10px;
-	align-items: center;
-	flex-wrap: nowrap;
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: nowrap;
 }
