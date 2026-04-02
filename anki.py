@@ -11,7 +11,7 @@ from elevenlabs.client import ElevenLabs
 
 
 class Postprocessor:
-    def __init__(self, batch_size=10, timeout=3600) -> None:
+    def __init__(self, batch_size=5, timeout=3600) -> None:
         self.batch_size = batch_size
         self.timeout = timeout
         self.last_timer_reset = time.time()
