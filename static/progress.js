@@ -2,7 +2,6 @@ let totalChars = 0;
 const charProgressDisplay = document.getElementById("char-progress");
 const bookContentElement = document.getElementsByClassName("book-content")[0];
 
-let ignoreNextScroll = false;
 
 function countChineseChars(str) {
   const matches = str.match(/[\u4e00-\u9fff]/g);
@@ -152,7 +151,13 @@ window.addEventListener("load", function () {
 });
 
 let scrollTimeout;
+let isResizing = false;
+let scrollPercentage = 0;
+let windowWidth = window.innerWidth;
 mainContent.addEventListener("scroll", function () {
+  if (isResizing) {
+    return;
+  }
   if (ignoreNextScroll) {
     ignoreNextScroll = false;
     return;
@@ -161,7 +166,7 @@ mainContent.addEventListener("scroll", function () {
   scrollTimeout = setTimeout(function () {
     const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
     if (maxScroll <= 0) return;
-    const scrollPercentage = (mainContent.scrollTop / maxScroll) * 100;
+    scrollPercentage = (mainContent.scrollTop / maxScroll) * 100;
     if (!isFinite(scrollPercentage)) return;
 
     fetch("/api/save-progress", {
@@ -174,6 +179,31 @@ mainContent.addEventListener("scroll", function () {
       }),
     }).catch((err) => console.error("Failed to save progress:", err));
   }, 100);
+});
+
+let resizeTimeout;
+window.addEventListener("resize", function () {
+  // When rotating from horizontal to vertical, scroll was getting reset to 0.
+  // This function restores the correct position while ignoring resizes caused by hiding or showing the address bar.
+  let previousWidth = windowWidth;
+  windowWidth = window.innerWidth;
+  if (windowWidth == previousWidth) return;
+  isResizing = true;
+  clearTimeout(scrollTimeout);
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(function () {
+    isResizing = false;
+  }, 100);
+
+  const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
+  if (maxScroll <= 0) return;
+  const scrollPosition = (scrollPercentage / 100) * maxScroll;
+
+  ignoreNextScroll = true;
+  mainContent.scrollTo({
+    top: scrollPosition,
+    behavior: "instant",
+  });
 });
 
 window.addEventListener("beforeunload", function () {
