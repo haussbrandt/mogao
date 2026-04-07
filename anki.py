@@ -52,7 +52,19 @@ class Postprocessor:
                 self.last_timer_reset = current_time
                 if self.timer_task:
                     self.timer_task.cancel()
-                self.timer_task = None
+
+                # Check if all cards got processed
+                processing_card_ids = call_anki(
+                    "findCards", query="tag:needs-processing"
+                ).json()["result"]
+
+                if processing_card_ids:
+                    print(
+                        f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards still waiting for postprocessing: {len(processing_card_ids)}.\nStarting a new timer."
+                    )
+                    self.timer_task = asyncio.create_task(self.start_timer())
+                else:
+                    self.timer_task = None
             else:
                 print(
                     f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Not running postprocessing yet, {time_since_last=}"
