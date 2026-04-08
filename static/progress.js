@@ -1,4 +1,5 @@
 let totalChars = 0;
+let ignoreNextScroll = false;
 const charProgressDisplay = document.getElementById("char-progress");
 const bookContentElement = document.getElementsByClassName("book-content")[0];
 
