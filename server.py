@@ -9,6 +9,8 @@ from functools import lru_cache
 from typing import Optional
 
 from dotenv import load_dotenv
+
+load_dotenv()
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -36,7 +38,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-load_dotenv()
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
