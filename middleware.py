@@ -1,45 +1,93 @@
 import base64
+import hashlib
+import hmac
 import os
 import secrets
+import time
 import bcrypt
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
+COOKIE_NAME = "session"
+SESSION_SECRET = os.environ[
+    "MOGAO_SESSION_SECRET"
+]  # generate with: secrets.token_hex(32)
+SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+def _sign(value: str) -> str:
+    sig = hmac.new(SESSION_SECRET.encode(), value.encode(), hashlib.sha256).hexdigest()
+    return f"{value}.{sig}"
+
+
+def _verify(signed: str) -> str | None:
+    """Returns the payload if valid, None otherwise."""
+    try:
+        value, sig = signed.rsplit(".", 1)
+        expected = hmac.new(
+            SESSION_SECRET.encode(), value.encode(), hashlib.sha256
+        ).hexdigest()
+        if not secrets.compare_digest(sig, expected):
+            return None
+        return value
+    except Exception:
+        return None
+
+
+def _make_token() -> str:
+    payload = f"{secrets.token_hex(32)}.{int(time.time()) + SESSION_MAX_AGE}"
+    return _sign(payload)
+
+
+def _token_valid(signed: str) -> bool:
+    payload = _verify(signed)
+    if not payload:
+        return False
+    _, expires_at = payload.rsplit(".", 1)
+    return int(time.time()) < int(expires_at)
+
+
+PUBLIC_PATHS = {"/static/site.webmanifest"}
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        auth_header = request.headers.get("Authorization")
-        if request.url.path in ["/static/site.webmanifest"]:
+        if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
 
-        if not auth_header or not auth_header.startswith("Basic "):
-            return Response(
-                content="Authentication required",
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
-            )
+        # 1. Valid session cookie → just proceed
+        cookie = request.cookies.get(COOKIE_NAME)
+        if cookie and _token_valid(cookie):
+            return await call_next(request)
 
-        try:
-            credentials = base64.b64decode(auth_header[6:]).decode("utf-8")
-            username, password = credentials.split(":", 1)
-
-            username_correct = secrets.compare_digest(username, "admin")
-            password_correct = bcrypt.checkpw(
-                password.encode(), os.environ.get("MOGAO_ADMIN_HASH").encode()
-            )
-
-            if not (username_correct and password_correct):
-                return Response(
-                    content="Invalid credentials",
-                    status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
+        # 2. Basic Auth credentials supplied → validate and mint cookie
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Basic "):
+            try:
+                credentials = base64.b64decode(auth_header[6:]).decode()
+                username, password = credentials.split(":", 1)
+                username_ok = secrets.compare_digest(username, "admin")
+                password_ok = bcrypt.checkpw(
+                    password.encode(),
+                    os.environ["MOGAO_ADMIN_HASH"].encode(),
                 )
-        except Exception:
-            return Response(
-                content="Invalid authentication",
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
-            )
+                if username_ok and password_ok:
+                    response = await call_next(request)
+                    response.set_cookie(
+                        key=COOKIE_NAME,
+                        value=_make_token(),
+                        max_age=SESSION_MAX_AGE,
+                        httponly=True,
+                        secure=True,  # drop to False if testing over plain HTTP
+                        samesite="strict",
+                    )
+                    return response
+            except Exception:
+                pass
 
-        response = await call_next(request)
-        return response
+        # 3. Nothing valid → challenge
+        return Response(
+            content="Authentication required",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Secure Area"'},
+        )
