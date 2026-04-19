@@ -120,7 +120,7 @@ class Postprocessor:
     @lru_cache(maxsize=20)
     def call_elevenlabs_api(self, sentence_clean):
         response = self.eleven_client.text_to_speech.convert_with_timestamps(
-            voice_id="DowyQ68vDpgFYdWVGjc3", text=sentence_clean
+            voice_id="nhhJXuFAYDroPyaJSlVA", text=sentence_clean
         )
         return response
 
