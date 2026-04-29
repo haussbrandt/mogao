@@ -373,3 +373,179 @@ a.toc-link.active {
 #dep-popup.visible ~ #char-progress {
   opacity: 0;
 }
+
+/* ==========================================================================
+   Word Coverage Segmenter Styles
+   ========================================================================== */
+
+.seg-known, .seg-unknown, .seg-i1, .seg-oov {
+  text-decoration: none;
+  margin-right: 1px;
+}
+
+/* ── i1-only mode (default) ── */
+[data-seg-mode="i1"] .seg-i1 {
+  text-decoration: underline;
+  text-decoration-color: #64b5f6;
+  text-decoration-style: solid;
+  text-underline-offset: 3px;
+}
+
+/* ── all mode ── */
+[data-seg-mode="all"] .seg-known {
+  text-decoration: underline;
+  text-decoration-color: #4caf50;
+  text-decoration-style: solid;
+  text-underline-offset: 3px;
+}
+[data-seg-mode="all"] .seg-i1 {
+  text-decoration: underline;
+  text-decoration-color: #64b5f6;
+  text-decoration-style: solid;
+  text-underline-offset: 3px;
+}
+[data-seg-mode="all"] .seg-unknown {
+  text-decoration: underline;
+  text-decoration-color: #ba68c8;
+  text-decoration-style: solid;
+  text-underline-offset: 3px;
+}
+[data-seg-mode="all"] .seg-oov {
+  background: rgba(255, 90, 50, 0.15);
+  border-radius: 2px;
+}
+
+/* ── UI Elements ── */
+
+
+#seg-toggle {
+  position: fixed;
+  top: 10px;
+  z-index: 1001;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 1.2em;
+  box-shadow: 0 2px 4px var(--shadow);
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-family: -apple-system, sans-serif;
+  line-height: 1.2;
+
+  transition: transform 0.3s ease;
+}
+
+#seg-toggle:hover {
+  background: var(--bg-subtle);
+  color: var(--text-body);
+}
+
+body:has(#sidebar.active) #seg-toggle {
+  transform: translate(0%);
+}
+
+@media (max-width: 769px) {
+  #seg-toggle {
+    left: 105px;
+    transform: translate(-400%);
+  }
+}
+
+@media (min-width: 769px) {
+  #seg-toggle {
+    left: 65px;
+  }
+}
+
+#stats-popup {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 99999;
+  color: var(--text-muted);
+  background-color: var(--bg-base-translucent);
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 12px;
+  line-height: 2;
+  box-shadow: 0 2px 12px var(--shadow-elevated);
+  min-width: 190px;
+}
+#stats-popup.visible { display: block; }
+
+.seg-swatch {
+  display: inline-block;
+  width: 28px; height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+#seg-mode-btns {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+#seg-mode-btns button {
+  flex: 1;
+  background: #444;
+  color: #aaa;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 5px 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: background 0.15s, color 0.15s;
+}
+#seg-mode-btns button.active {
+  background: #666;
+  color: #fff;
+  border-color: #888;
+}
+#seg-mode-btns button:hover { background: #555; color: #fff; }
+
+#stats-btn {
+  position: fixed;
+  top: 10px;
+  z-index: 1001;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 1.2em;
+  box-shadow: 0 2px 4px var(--shadow);
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-family: -apple-system, sans-serif;
+  line-height: 1.2;
+
+  transition: transform 0.3s ease;
+}
+
+#stats-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text-body);
+}
+
+body:has(#sidebar.active) #stats-btn {
+  transform: translate(0%);
+}
+
+@media (max-width: 769px) {
+  #stats-btn {
+    left: 160px;
+    transform: translate(-600%);
+  }
+}
+
+@media (min-width: 769px) {
+  #stats-btn {
+    left: 120px;
+  }
+}
+

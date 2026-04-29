@@ -5,6 +5,8 @@ fetch("/static/dict.json?v=2")
   .then((data) => {
     localDict = data;
     console.log("Dictionary loaded");
+    const known = buildKnownSet();
+    annotateBookContent(localDict, known);
   })
   .catch((err) => console.error("Failed to load dictionary", err));
 
