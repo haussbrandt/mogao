@@ -154,19 +154,9 @@ function stripAnnotations(root) {
   root.normalize();
 }
 
-function computeStats(root) {
-  return {
-    known: root.querySelectorAll(".seg-known").length,
-    i1: root.querySelectorAll(".seg-i1").length,
-    unknown: root.querySelectorAll(".seg-unknown").length,
-    oov: root.querySelectorAll(".seg-oov").length,
-  };
-}
 
 function buildUI(bookContent) {
   const toggleBtn = document.getElementById("seg-toggle");
-  const statsBtn = document.getElementById("stats-btn"); // TODO: Move stats to it's own file
-  const statsPopup = document.getElementById("stats-popup");
 
   if (toggleBtn && !toggleBtn.dataset.segInitialized) {
     const MODES = ["i1", "all", "off"];
@@ -180,43 +170,8 @@ function buildUI(bookContent) {
 	});
 	toggleBtn.dataset.segInitialized = "true";
   }
-	
-  if (statsBtn && statsPopup && !statsBtn.dataset.segInitialized) {
-	  statsBtn.addEventListener("click", (event) => {
-		  statsPopup.classList.toggle("visible");
-		  event.stopPropagation();
-	  });
-
-	  document.addEventListener("click", (event) => {
-		  if (statsPopup.classList.contains("visible") && !statsPopup.contains(event.target)) {
-			  statsPopup.classList.remove("visible");
-		  }
-	  })
-
-	  statsBtn.dataset.segInitialized = "true";
-  }
-
-  refreshStatsPopup(bookContent);
 }
 
-function refreshStatsPopup(bookContent) {
-  const statsPopup = document.getElementById("stats-popup");
-  if (!statsPopup) return;
-
-  const s = computeStats(bookContent);
-  const total = s.known + s.i1 + s.unknown + s.oov;
-  const pct = total ? Math.round((s.known / total) * 100) : 0;
-  
-  const currentMode = bookContent.getAttribute("data-seg-mode") || "i1";
-
-  statsPopup.innerHTML = `
-    <div style="font-weight:bold;margin-bottom:4px;">Word Coverage</div>
-    <div><span class="seg-swatch" style="background:#4caf50"></span>Known <b>${s.known}</b> (${pct}%)</div>
-    <div><span class="seg-swatch" style="background:#64b5f6"></span>i+1 targets <b>${s.i1}</b></div>
-    <div><span class="seg-swatch" style="background:#ba68c8"></span>Unknown (2+) <b>${s.unknown}</b></div>
-    <div><span class="seg-swatch" style="background:rgba(255,90,50,0.5)"></span>OOV <b>${s.oov}</b></div>
-  `;
-}
 
 // Public entry point — call from dictionary.js after localDict is set
 async function annotateBookContent(dict, known) {
