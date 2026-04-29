@@ -4,12 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ book.metadata.title }}</title>
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC&display=swap"
+      rel="stylesheet"
+    />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='reader.css') }}?v=9"
+      href="{{ url_for('static', path='reader.css') }}?v=11"
     />
     <!-- Favicons -->
     <link
@@ -37,6 +40,9 @@
   <body>
     <button id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
     <a id="nav-home-btn" href="/">←</a>
+	<button id="seg-toggle">i+1</button>
+	<button id="stats-btn">%</button>
+	<div id="stats-popup"></div>
     <!-- SIDEBAR -->
     <div id="sidebar">
       <div class="nav-header">{{ book.metadata.title }}</div>
@@ -99,7 +105,7 @@
       <div class="popup-body" id="pop-body"></div>
     </div>
 
-	<div id="char-progress"></div>
+    <div id="char-progress"></div>
 
     <!-- prettier-ignore -->
     <script>
@@ -116,11 +122,12 @@
 			chapter_lengths: {{ book.spine | map(attribute='chapter_characters') | list | tojson }}
 		 };
 	</script>
-	<script src="{{ url_for('static', path='navigation.js') }}"></script>
-	<script src="{{ url_for('static', path='progress.js') }}?v=2"></script>
-	<script src="{{ url_for('static', path='textprocessor.js') }}"></script>
-	<script src="{{ url_for('static', path='dictionary.js') }}"></script>
-	<script src="{{ url_for('static', path='anki.js') }}?v=2"></script>
-	<script src="{{ url_for('static', path='reader.js') }}"></script>
+    <script src="{{ url_for('static', path='navigation.js') }}"></script>
+    <script src="{{ url_for('static', path='progress.js') }}?v=2"></script>
+    <script src="{{ url_for('static', path='textprocessor.js') }}"></script>
+    <script src="{{ url_for('static', path='dictionary.js?v=3') }}"></script>
+    <script src="{{ url_for('static', path='anki.js') }}?v=2"></script>
+    <script src="{{ url_for('static', path='segmenter.js') }}"></script>
+    <script src="{{ url_for('static', path='reader.js') }}"></script>
   </body>
 </html>
