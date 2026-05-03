@@ -220,3 +220,13 @@ async function annotateBookContent(dict, known) {
   annotateNode(bookContent, dict, known);
   buildUI(bookContent);
 }
+
+window.reannotateWithNewDict = function (newDict) {
+  if (!newDict || !_known) return;
+  const bookContent = document.querySelector(".book-content");
+  if (!bookContent) return;
+ 
+  _dict = newDict;
+  stripAnnotations(bookContent);
+  annotateNode(bookContent, newDict, _known);
+};

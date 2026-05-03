@@ -549,3 +549,8 @@ body:has(#sidebar.active) #stats-btn {
   }
 }
 
+.llm-badge {
+  background: #6c5ce7 !important;   /* distinct purple so it's not mistaken for a freq rank */
+  color: #fff !important;
+}
+
