@@ -29,12 +29,18 @@ from library import (
     save_progress,
     save_settings,
 )
+from llm_processor import (
+    load_book_dict,
+    process_book_background,
+    resume_interrupted_processing,
+)
 from middleware import AuthMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(postprocessor.check_and_process())
+    asyncio.create_task(resume_interrupted_processing())
     yield
 
 
@@ -75,6 +81,13 @@ async def save_sort_api(data: SaveSortRequest):
 async def get_settings_api():
     current_settings = load_settings()
     return JSONResponse(current_settings)
+
+
+@app.get("/api/book-dict/{book_id}", response_class=JSONResponse)
+async def get_book_dict_api(book_id: str):
+    safe_id = os.path.basename(book_id)
+    data = load_book_dict(safe_id)
+    return JSONResponse(data)
 
 
 class NewCardRequest(BaseModel):
@@ -188,8 +201,11 @@ async def upload_book(files: list[UploadFile] = File(...)):
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
-            generate_book(temp_filename, LIBRARY_PATH)
+            book = generate_book(temp_filename, LIBRARY_PATH)
             load_book_cached.cache_clear()
+
+            book_id = str(book.metadata.generate_key())
+            asyncio.create_task(process_book_background(book_id, book))
 
         except Exception as e:
             print(f"Error processing book: {e}")

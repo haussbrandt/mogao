@@ -4,6 +4,7 @@ fetch("/static/dict.json?v=2")
   .then((r) => r.json())
   .then((data) => {
     localDict = data;
+    window.localDict = localDict;
     console.log("Dictionary loaded");
     const known = buildKnownSet();
     annotateBookContent(localDict, known);
@@ -15,7 +16,7 @@ function performLookup(text) {
   if (!localDict) return [];
 
   const cleanText = text.replace(/\s+/g, "");
-  const limit = Math.min(6, cleanText.length);
+  const limit = Math.min(20, cleanText.length);
   const results = [];
 
   for (let i = limit; i > 0; i--) {
@@ -35,6 +36,7 @@ function performLookup(text) {
         entries: entry.e.map((e) => ({ pinyin: e.p, definitions: e.d })),
         frequency: freqStr,
         length: i,
+        llm: !!entry.llm,
       });
     }
   }

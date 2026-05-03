@@ -128,9 +128,15 @@ bookContent.addEventListener("click", async function (e) {
 
       let html = "";
       item.entries.forEach((entry) => {
-        let freqHtml = item.frequency
-          ? `<span class="freq-badge">#${item.frequency}</span>`
-          : "";
+		const isLlm = item.llm ?? false;
+		let freqHtml;
+		if (isLlm) {
+			freqHtml = `<span class="freq-badge llm-badge">LLM</span>`;
+		} else {
+        	freqHtml = item.frequency
+          		? `<span class="freq-badge">#${item.frequency}</span>`
+          		: "";
+		}
         let definitionsHTML = `<ul>`;
         definitionsHTML += entry.definitions
           .map((d) => `<li>${d}</li>`)
