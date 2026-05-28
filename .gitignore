@@ -11,6 +11,7 @@ wheels/
 
 samples/
 library/
+video_library/
 
 .env
 Caddyfile

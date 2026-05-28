@@ -128,15 +128,15 @@ bookContent.addEventListener("click", async function (e) {
 
       let html = "";
       item.entries.forEach((entry) => {
-		const isLlm = item.llm ?? false;
-		let freqHtml;
-		if (isLlm) {
-			freqHtml = `<span class="freq-badge llm-badge">LLM</span>`;
-		} else {
-        	freqHtml = item.frequency
-          		? `<span class="freq-badge">#${item.frequency}</span>`
-          		: "";
-		}
+        const isLlm = item.llm ?? false;
+        let freqHtml;
+        if (isLlm) {
+          freqHtml = `<span class="freq-badge llm-badge">LLM</span>`;
+        } else {
+          freqHtml = item.frequency
+            ? `<span class="freq-badge">#${item.frequency}</span>`
+            : "";
+        }
         let definitionsHTML = `<ul>`;
         definitionsHTML += entry.definitions
           .map((d) => `<li>${d}</li>`)
@@ -152,7 +152,7 @@ bookContent.addEventListener("click", async function (e) {
 			data-word="${item.word}" 
 			data-pinyin="${entry.pinyin}"
 			data-defs="${encodedDefinitions}"
-			onclick="addToAnki(this)">
+			onclick="addToAnki(this, '${window.MOGAO_CONFIG.bookId}')">
 			${deckWords.has(item.word) ? "✓" : "+"}
 			</button>`;
         html += `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;

@@ -1,23 +1,12 @@
 /**
- * book_dict.js  —  loads the LLM-generated book dictionary and merges it into
- * localDict so segmentation and the popup both see the new words automatically.
- *
- * Words discovered by the LLM are stored server-side in book_dict.json and
- * served via GET /api/book-dict/<bookId>.  Processing happens in the background
- * after upload, so status may be "processing" when the reader first opens.
- * We poll every 30 s until the job is done, merging new words each time.
- *
- * Integration points expected from other scripts:
- *   window.localDict          – populated by dictionary.js; we add entries here
- *   window.reannotateWithNewDict(dict) – exposed by segmenter.js; re-runs
- *                               annotation so newly-known proper nouns are
- *                               immediately coloured correctly in the text
+ * Basically a copy of book_dict.json with very little chagned.
+ * TODO: Refactor
  */
 
 (async function () {
   "use strict";
 
-  const { bookId } = window.MOGAO_CONFIG;
+  const { videoId } = window.MOGAO_CONFIG;
   const POLL_INTERVAL_MS = 30_000;
 
   function toLocalEntry(raw) {
@@ -52,11 +41,11 @@
   async function fetchAndMerge() {
     let data = null;
     try {
-      const resp = await fetch(`/api/book-dict/${bookId}`);
+      const resp = await fetch(`/video/api/video-dict/${videoId}`);
       if (!resp.ok) return null;
       data = await resp.json();
     } catch (e) {
-      console.warn("[book_dict] fetch error:", e);
+      console.warn("[video_dict] fetch error:", e);
       return null;
     }
 

@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 from datetime import datetime
+import re
 from typing import Optional
 
 import google.generativeai as genai  # type: ignore
@@ -10,7 +11,7 @@ from google.api_core import retry_async
 from google.generativeai.types import RequestOptions
 from pydantic import BaseModel
 
-from constants import LIBRARY_PATH
+from constants import LIBRARY_PATH, VIDEO_LIBRARY_PATH
 
 CHUNK_SIZE_CHARS = 20_000
 RATE_LIMIT_PER_MIN = 14  # It's actually 15, but sometimes API was complaining
@@ -52,6 +53,29 @@ def _save_book_dict(book_id: str, data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
 
 
+def get_video_dict_path(video_id: str) -> str:
+    safe_id = os.path.basename(video_id)
+    return os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles_dict.json")
+
+
+def load_video_dict(video_id: str) -> dict:
+    """Load subtitles_dict.json, returning a safe default if missing/corrupt."""
+    path = get_video_dict_path(video_id)
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[video_dict] Load error {video_id}: {e}")
+    return {"status": "none", "words": {}, "processed_chunks": 0, "total_chunks": 0}
+
+
+def _save_video_dict(video_id: str, data: dict) -> None:
+    path = get_video_dict_path(video_id)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+
+
 # ──────────────────────────────────────────────────────────────
 # Text chunking — groups chapters into ~CHUNK_SIZE_CHARS blocks
 # ──────────────────────────────────────────────────────────────
@@ -83,6 +107,45 @@ def _chunk_spine(spine) -> list[str]:
     return chunks
 
 
+def _chunk_subtitles(subtitles) -> list[str]:
+    """
+    Walk the subtitle lines and accumulate text until CHUNK_SIZE_CHARS
+    Chinese characters are reached, then start a new chunk.
+    Lines are never split mid-way — boundaries fall between lines.
+    """
+    chunks: list[str] = []
+    current_texts: list[str] = []
+    current_count: int = 0
+
+    _SRT_METADATA = re.compile(
+        r"^\d+\s*$"  # sequence number lines
+        r"|^\d{2}:\d{2}:\d{2},\d{3}\s*-->"  # timestamp lines
+        r"|<[^>]+>",  # inline tags
+        re.MULTILINE,
+    )
+
+    lines = []
+    for line in subtitles.splitlines():
+        cleaned = _SRT_METADATA.sub("", line).strip()
+        if cleaned:
+            lines.append(cleaned)
+
+    for line in lines:
+        ch_chars = sum(1 for c in line if "\u4e00" <= c <= "\u9fff")
+        if current_count + ch_chars > CHUNK_SIZE_CHARS and current_texts:
+            chunks.append("\n".join(current_texts))
+            current_texts = [line]
+            current_count = ch_chars
+        else:
+            current_texts.append(line)
+            current_count += ch_chars
+
+    if current_texts:
+        chunks.append("\n".join(current_texts))
+
+    return chunks
+
+
 _PROMPT = """\
 You are a Chinese-language expert helping a reader study a Chinese novel.
 
@@ -97,7 +160,7 @@ For each item provide:
 - word: the simplified Chinese
 - pinyin: romanization with tone marks (e.g. "Wáng Míng", "qīngōng"). Do not put spaces within a word - Dursley = Désīlǐ.
 - definition: a concise dictionary-style entry in English. For cultural, religious or domain-specific terms,
-include a one-sentence explanation of what the concept acutally is - not just its English equivalent. For proper nouns,
+include a one-sentence explanation of what the concept actually is - not just its English equivalent. For proper nouns,
 briefly identify who or what it refers to within this work. Aim for the style of a learner's dictionary or encyclopedia gloss:
 clear, informative, and under 40 words. For real people, include birth and death dates in parentheses. For fictional characters, include the source.
 
@@ -285,30 +348,173 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         )
 
 
+async def process_subtitles_background(video_id, resume: bool = False) -> None:
+    """
+    Asyncio background task — do not await, use asyncio.create_task().
+
+    Chunks the subtitles, calls Gemma for each chunk (respecting the rate
+    limit), and saves discovered words incrementally to subtitles_dict.json so
+    the user can access them as soon as the first chunk is processed.
+
+    Args:
+        video_id:  the UUID folder name (e.g. "a1b2c3d4-...")
+        resume:    if True, skip chunks already counted in processed_chunks
+                   (used on server restart to recover interrupted jobs)
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print(f"[LLM] GEMINI_API_KEY not set — skipping subtitles dict for {video_id}")
+        return
+
+    genai.configure(api_key=api_key)
+    model_name = os.getenv("GEMMA_MODEL", "gemma-4-31b-it")
+    model = genai.GenerativeModel(model_name)
+
+    safe_id = os.path.basename(video_id)
+    subtitles_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
+    if not os.path.exists(subtitles_path):
+        return
+
+    with open(subtitles_path, "r") as f:
+        subtitles = f.read()
+    chunks = _chunk_subtitles(subtitles)
+    total = len(chunks)
+
+    if resume:
+        state = load_video_dict(video_id)
+        completed_indices = set(state.get("completed_indices", []))
+        if len(completed_indices) >= total:
+            state["status"] = "done"
+            _save_video_dict(video_id, state)
+            return
+
+        state["status"] = "processing"
+        state["total_chunks"] = total
+    else:
+        completed_indices = set()
+        state: dict = {
+            "status": "processing",
+            "words": {},
+            "processed_chunks": 0,
+            "completed_indices": [],
+            "total_chunks": total,
+            "started_at": datetime.now().isoformat(),
+        }
+
+    _save_video_dict(video_id, state)
+    print(f"[LLM] {video_id}: {total} chunk(s), {len(completed_indices)} already done.")
+
+    async def fetch_chunk(index: int, text: str):
+        await _rate_limited_wait()
+        print(
+            f"[LLM] {video_id}: Sending chunk {index + 1}/{total} ({len(text):,} chars) to API..."
+        )
+        try:
+            entries = await _call_llm(model, text)
+            return index, entries, None
+        except Exception as e:
+            print(f"[LLM] {video_id}: Chunk {index + 1} permanently failed: {e}")
+            return index, [], e
+
+    tasks = [
+        asyncio.create_task(fetch_chunk(i, chunk))
+        for i, chunk in enumerate(chunks)
+        if i not in completed_indices
+    ]
+
+    for coro in asyncio.as_completed(tasks):
+        i, entries, error = await coro
+
+        if error:
+            print(
+                f"[LLM] {video_id}: chunk {i + 1} permanently failed. Will retry on next server reboot."
+            )
+            continue
+
+        for entry in entries:
+            w = (entry.get("word") or "").strip()
+            if not w:
+                continue
+            if w not in state["words"]:
+                state["words"][w] = {
+                    "e": [
+                        {
+                            "p": entry.get("pinyin", ""),
+                            "d": [entry.get("english_meaning", "")],
+                        }
+                    ],
+                    "llm": True,
+                }
+
+        completed_indices.add(i)
+        state["completed_indices"] = list(completed_indices)
+        state["processed_chunks"] = len(completed_indices)
+
+        _save_video_dict(video_id, state)
+        print(
+            f"[LLM] {video_id}: chunk {i + 1}/{total} done"
+            f" — {len(state['words'])} words so far"
+        )
+
+    if len(completed_indices) >= total:
+        state["status"] = "done"
+        state["completed_at"] = datetime.now().isoformat()
+        _save_video_dict(video_id, state)
+        print(f"[LLM] {video_id}: complete — {len(state['words'])} LLM words extracted")
+    else:
+        print(
+            f"[LLM] {video_id}: paused with errors. {len(completed_indices)}/{total} chunks completed."
+        )
+
+
 async def resume_interrupted_processing() -> None:
     """
     Called once at server startup. Scans all book folders for any
     book_dict.json files whose status is still "processing" (meaning the
     server was shut down mid-run) and resumes them as background tasks.
+    Also does the same for video folders and subtitles_dict.json files.
     """
-    if not os.path.exists(LIBRARY_PATH):
-        return
-
-    for book_id in os.listdir(LIBRARY_PATH):
-        dict_path = get_book_dict_path(book_id)
-        if not os.path.exists(dict_path):
-            continue
-        try:
-            with open(dict_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if data.get("status") != "processing":
+    # TODO: Refactor
+    try:
+        for book_id in os.listdir(LIBRARY_PATH):
+            if not os.path.isdir(book_id):
                 continue
             pkl_path = os.path.join(LIBRARY_PATH, book_id, "book.pkl")
             if not os.path.exists(pkl_path):
                 continue
-            with open(pkl_path, "rb") as f:
-                book = pickle.load(f)
-            print(f"[LLM] Resuming interrupted processing for {book_id}")
-            asyncio.create_task(process_book_background(book_id, book, resume=True))
-        except Exception as e:
-            print(f"[LLM] Could not resume {book_id}: {e}")
+            dict_path = get_book_dict_path(book_id)
+            try:
+                with open(dict_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("status") != "processing":
+                    continue
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            try:
+                with open(pkl_path, "rb") as f:
+                    book = pickle.load(f)
+                print(f"[LLM] Resuming interrupted processing for {book_id}")
+                asyncio.create_task(process_book_background(book_id, book, resume=True))
+            except Exception as e:
+                print(f"[LLM] Could not resume {book_id}: {e}")
+    except FileNotFoundError:
+        pass
+    try:
+        for video_id in os.listdir(VIDEO_LIBRARY_PATH):
+            if not os.path.isdir(video_id):
+                continue
+            dict_path = get_video_dict_path(video_id)
+            try:
+                with open(dict_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if data.get("status") != "processing":
+                    continue
+            except (FileNotFoundError, json.JSONDecodeError):
+                pass
+            try:
+                print(f"[LLM] Resuming interrupted processing for {video_id}")
+                asyncio.create_task(process_subtitles_background(video_id, resume=True))
+            except Exception as e:
+                print(f"[LLM] Could not resume {video_id}: {e}")
+    except FileNotFoundError:
+        pass

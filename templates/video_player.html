@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mogao Video Player</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', path='shared.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}" />
+    <!-- Favicons -->
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="{{ url_for('static', path='apple-touch-icon.png') }}"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="{{ url_for('static', path='favicon-32x32.png') }}"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="{{ url_for('static', path='favicon-16x16.png') }}"
+    />
+    <link
+      rel="manifest"
+      href="{{ url_for('static', path='site.webmanifest') }}"
+    />
+    <style></style>
+  </head>
+  <body>
+    {% if not has_subtitles %}
+    <div id="sub-upload-bar">
+      <label id="sub-upload-btn">
+        Upload subtitles (.srt)
+        <input type="file" id="sub-input" accept=".srt" hidden />
+      </label>
+      <span id="sub-upload-status"></span>
+    </div>
+    {% endif %}
+    <div id="player-container">
+      <video id="video" controls src="/video/stream/{{ video_id }}"></video>
+      <div id="subtitle-overlay"></div>
+    </div>
+
+    <div id="def-popup">
+      <div class="popup-header">
+        <span class="popup-title">Definition</span>
+        <button class="close-btn" id="close-popup">✕</button>
+      </div>
+      <div class="popup-body" id="pop-body"></div>
+    </div>
+  </body>
+
+  <!-- prettier-ignore -->
+  <script>
+    window.MOGAO_CONFIG = {
+		videoId: "{{ video_id }}",
+		hasSubtitles: {{ has_subtitles | tojson }},
+		deckWords: {{ deck_words | tojson }},
+    };
+  </script>
+
+  <script src="{{ url_for('static', path='textprocessor.js') }}"></script>
+  <script src="{{ url_for('static', path='anki.js') }}?v=2"></script>
+  <script src="{{ url_for('static', path='segmenter.js') }}"></script>
+  <script src="{{ url_for('static', path='dictionary.js?v=3') }}"></script>
+  <script src="{{ url_for('static', path='video_dict.js') }}"></script>
+  <script src="{{ url_for('static', path='video.js' )}}"></script>
+</html>

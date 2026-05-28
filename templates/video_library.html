@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mogao Video Library</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='video_library.css') }}"
+    />
+    <!-- Favicons -->
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="{{ url_for('static', path='apple-touch-icon.png') }}"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="{{ url_for('static', path='favicon-32x32.png') }}"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="{{ url_for('static', path='favicon-16x16.png') }}"
+    />
+    <link
+      rel="manifest"
+      href="{{ url_for('static', path='site.webmanifest') }}"
+    />
+  </head>
+  <body>
+    <div class="container">
+      <div class="header-row">
+        <h1>Videos</h1>
+        <div class="controls-wrapper">
+          <!-- prettier-ignore -->
+          <select id="sort-selector">
+			  <option value="title" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>
+			  <option value="title_rev" {% if current_sort == 'title_rev' %}selected{% endif %}>Alphabetical (Reverse)</option>
+			  <option value="last_watch" {% if current_sort == 'last_watch' %}selected{% endif %}>Last Watched (Recent)</option>
+			  <option value="last_watch_rev" {% if current_sort == 'last_watch_rev' %}selected{% endif %}>Last Watched (Oldest)</option>
+			  <option value="date_added" {% if current_sort == 'date_added' %}selected{% endif %}>Date Added (Recent)</option>
+			  <option value="date_added_rev" {% if current_sort == 'date_added_rev' %}selected{% endif %}>Date Added (Oldest)</option>
+			  <option value="chars" {% if current_sort == 'chars' %}selected{% endif %}>Character Count (Highest)</option>
+			  <option value="chars_rev" {% if current_sort == 'chars_rev' %}selected{% endif %}>Character Count (Lowest)</option>
+			  <option value="mined" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
+			  <option value="mined_rev" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
+          </select>
+          <div class="yt-input-wrapper">
+            <input
+              id="yt-link"
+              type="text"
+              placeholder="Paste YouTube URL…"
+              class="yt-input"
+            />
+            <button
+              id="yt-submit"
+              class="btn yt-btn"
+              onclick="
+                const url = document.getElementById('yt-link').value.trim();
+                if (!url) return;
+                fetch('/video/download-video', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ url }),
+                });
+              "
+            >
+              Download
+            </button>
+          </div>
+          <form
+            action="/video/upload"
+            method="post"
+            enctype="multipart/form-data"
+          >
+            <label for="video-upload" class="btn upload-btn">
+              + Add Videos
+            </label>
+            <input
+              id="video-upload"
+              class="hidden-input"
+              type="file"
+              name="files"
+              multiple
+              accept="video/*"
+              onchange="this.form.submit()"
+            />
+          </form>
+        </div>
+      </div>
+      <div class="video-grid">
+        {% for video in videos %}
+        <div
+          class="video-card"
+          data-title="{{ video.title }}"
+          data-added="{{ video.processed_at }}"
+          data-watch="{{ video.last_watch_time }}"
+          data-chars="{{ video.character_count }}"
+          data-length="{{ video.length }}"
+          data-mined="{{ video.tagged_cards_count }}"
+          onclick="window.location.href='/video/watch/{{ video.id }}'"
+        >
+          <form
+            action="/video/delete/{{ video.id }}"
+            method="post"
+            class="delete-form"
+            onsubmit="
+              return confirm('Are you sure you want to delete this video?');
+            "
+            onclick="event.stopPropagation()"
+          >
+            <button type="submit" class="delete-btn">x</button>
+          </form>
+          <div class="video-cover">
+            {% if video.cover_url %}
+            <img
+              src="{{ video.cover_url }}"
+              alt="Cover for {{ video.title }}"
+            />
+            {% else %}
+            <div class="no-cover">No Cover</div>
+            {% endif %}
+          </div>
+          <div class="video-title">{{ video.title }}</div>
+          <div class="video-meta">
+            {{ video.length }}<br />
+            {{"{:,}".format(video.character_count).replace(',', ' ') }}
+            characters<br />
+            {% if video.tagged_cards_count == 1 %}
+            {{"{:,}".format(video.tagged_cards_count).replace(',', ' ') }} mined
+            card<br />
+            {% else %} {{"{:,}".format(video.tagged_cards_count).replace(',', '
+            ') }} mined cards<br />
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", async () => {
+        const grid = document.getElementsByClassName("video-grid")[0];
+        const selector = document.getElementById("sort-selector");
+        const cards = Array.from(grid.getElementsByClassName("video-card"));
+
+        try {
+          const response = await fetch("/video/api/get-settings");
+          const settings = await response.json();
+          if (settings.sort_order) {
+            selector.value = settings.sort_order;
+          }
+        } catch (e) {
+          console.error("Could not load settings", e);
+        }
+
+        const sortVideos = () => {
+          const criteria = selector.value;
+
+          cards.sort((a, b) => {
+            switch (criteria) {
+              case "title":
+                return a.dataset.title.localeCompare(b.dataset.title);
+              case "title_rev":
+                return b.dataset.title.localeCompare(a.dataset.title);
+              case "last_watch":
+                return Number(b.dataset.watch) - Number(a.dataset.watch);
+              case "last_watch_rev":
+                return Number(a.dataset.watch) - Number(b.dataset.watch);
+              case "date_added":
+                return b.dataset.added.localeCompare(a.dataset.added);
+              case "date_added_rev":
+                return a.dataset.added.localeCompare(b.dataset.added);
+              case "chars":
+                return Number(b.dataset.chars) - Number(a.dataset.chars);
+              case "chars_rev":
+                return Number(a.dataset.chars) - Number(b.dataset.chars);
+              case "length":
+                return Number(b.dataset.length) - Number(a.dataset.length);
+              case "length_rev":
+                return Number(a.dataset.length) - Number(b.dataset.length);
+              case "mined":
+                return Number(b.dataset.mined) - Number(a.dataset.mined);
+              case "mined_rev":
+                return Number(a.dataset.mined) - Number(b.dataset.mined);
+              default:
+                return 0;
+            }
+          });
+          cards.forEach((card) => grid.appendChild(card));
+        };
+
+        selector.addEventListener("change", async () => {
+          sortVideos();
+          await fetch("/video/api/save-sort", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sort_order: selector.value }),
+          });
+        });
+
+        sortVideos();
+      });
+    </script>
+  </body>
+</html>
