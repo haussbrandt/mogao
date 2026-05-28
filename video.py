@@ -120,19 +120,17 @@ def generate_video(path, original_filename) -> tuple[Video, str]:
             f"{output_dir}/video.mp4",
         ]
     else:
-        # Re-encode to H.265
+        # Re-encode to H.264
         ffmpeg_cmd = [
             "ffmpeg",
             "-i",
             path,
             "-c:v",
-            "libx265",
+            "libx264",
             "-crf",
             "28",
             "-preset",
             "fast",
-            "-tag:v",
-            "hvc1",  # Required for Safari
             "-pix_fmt",
             "yuv420p",
             "-c:a",

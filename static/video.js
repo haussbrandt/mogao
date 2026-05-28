@@ -56,7 +56,7 @@ video.addEventListener("seeked", updateSubtitle);
 video.addEventListener("play", updateSubtitle);
 
 if (window.MOGAO_CONFIG.hasSubtitles) {
-  fetch(`/video/${window.MOGAO_CONFIG.videoId}/subtitles`)
+  fetch(`/${window.MOGAO_CONFIG.videoId}/subtitles`)
     .then((r) => {
       if (!r.ok) throw new Error("Subtitle fetch failed: ${r.status}");
       return r.text();
@@ -223,7 +223,7 @@ if (subInput) {
 
     try {
       const res = await fetch(
-        `/video/upload-subtitles/${window.MOGAO_CONFIG.videoId}`,
+        `/upload-subtitles/${window.MOGAO_CONFIG.videoId}`,
         {
           method: "POST",
           body: form,
