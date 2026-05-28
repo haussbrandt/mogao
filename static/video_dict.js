@@ -41,7 +41,7 @@
   async function fetchAndMerge() {
     let data = null;
     try {
-      const resp = await fetch(`/video/api/video-dict/${videoId}`);
+      const resp = await fetch(`/api/video-dict/${videoId}`);
       if (!resp.ok) return null;
       data = await resp.json();
     } catch (e) {

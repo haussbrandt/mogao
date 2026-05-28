@@ -53,7 +53,7 @@ async def upload_video(
         background_tasks.add_task(generate_video, temp_filename, file.filename)
 
     load_video_cached.cache_clear()
-    return RedirectResponse(url="/video", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.post("/upload-subtitles/{video_id}")
@@ -99,7 +99,7 @@ async def upload_subtitles(video_id: str, file: UploadFile = File(...)):
 
     asyncio.create_task(process_subtitles_background(video_id))
 
-    return RedirectResponse(url="/video", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 # TODO: refactor, move to correct file etc.
@@ -341,7 +341,7 @@ async def video_library_view(request: Request):
                         "title": video.metadata.title,
                         "character_count": getattr(video, "character_count", 0),
                         "tagged_cards_count": len(tagged_card_ids),
-                        "cover_url": f"/video/{item}/{video.cover_image}",
+                        "cover_url": f"/{item}/{video.cover_image}",
                         "processed_at": video.processed_at,
                         "last_watch_time": last_watch_time,
                     }

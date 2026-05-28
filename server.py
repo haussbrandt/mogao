@@ -51,6 +51,11 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount(
+    video_router.router.prefix + "/static",
+    StaticFiles(directory="static"),
+    name="static",
+)
 app.include_router(video_router.router)
 
 postprocessor = Postprocessor()
