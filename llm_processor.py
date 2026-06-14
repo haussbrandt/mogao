@@ -11,7 +11,7 @@ from google.api_core import retry_async
 from google.generativeai.types import RequestOptions
 from pydantic import BaseModel
 
-from constants import LIBRARY_PATH, VIDEO_LIBRARY_PATH
+from constants import LIBRARY_PATH, VIDEO_LIBRARY_PATH, normalize_uuid
 
 CHUNK_SIZE_CHARS = 20_000
 RATE_LIMIT_PER_MIN = 14  # It's actually 15, but sometimes API was complaining
@@ -31,7 +31,7 @@ def _get_rate_lock() -> asyncio.Lock:
 
 
 def get_book_dict_path(book_id: str) -> str:
-    safe_id = os.path.basename(book_id)
+    safe_id = normalize_uuid(book_id)
     return os.path.join(LIBRARY_PATH, safe_id, "book_dict.json")
 
 
@@ -54,7 +54,7 @@ def _save_book_dict(book_id: str, data: dict) -> None:
 
 
 def get_video_dict_path(video_id: str) -> str:
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     return os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles_dict.json")
 
 
@@ -370,7 +370,7 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
     model_name = os.getenv("GEMMA_MODEL", "gemma-4-31b-it")
     model = genai.GenerativeModel(model_name)
 
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     subtitles_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
     if not os.path.exists(subtitles_path):
         return

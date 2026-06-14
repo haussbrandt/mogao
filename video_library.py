@@ -4,7 +4,7 @@ import os
 import pickle
 from typing import Optional
 
-from constants import VIDEO_LIBRARY_PATH
+from constants import VIDEO_LIBRARY_PATH, normalize_uuid
 from video import Video
 
 
@@ -14,7 +14,10 @@ def load_video_cached(folder_name: str) -> Optional[Video]:
     Loads the video metadata from the pickle file.
     Cached so we don't re-read the disk on every click.
     """
-    safe_id = os.path.basename(folder_name)
+    try:
+        safe_id = normalize_uuid(folder_name)
+    except ValueError:
+        return None
     file_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.pkl")
     if not os.path.exists(file_path):
         return None
@@ -30,7 +33,7 @@ def load_video_cached(folder_name: str) -> Optional[Video]:
 
 def get_video_progress_path(video_id: str) -> str:
     """Returns the path to the progress.json file for a given video."""
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     return os.path.join(VIDEO_LIBRARY_PATH, safe_id, "progress.json")
 
 

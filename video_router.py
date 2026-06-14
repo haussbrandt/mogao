@@ -6,13 +6,14 @@ import re
 import shutil
 import subprocess
 import uuid
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from anki import call_anki, get_all_words_from_anki_deck
-from constants import VIDEO_LIBRARY_PATH
+from constants import VIDEO_LIBRARY_PATH, normalize_uuid
 from dependencies import postprocessor, templates
 from llm_processor import load_video_dict, process_subtitles_background
 from video import Video, cut_audio, generate_video, take_screenshot
@@ -35,7 +36,7 @@ def video_base_path() -> str:
 
 
 class NewCardFromVideoRequest(BaseModel):
-    book_id: str  # FIXME: leftover from copying
+    book_id: UUID  # FIXME: leftover from copying
     word: str
     pinyin: str
     sentence: str
@@ -46,8 +47,9 @@ class NewCardFromVideoRequest(BaseModel):
 
 @router.post("/api/new-card-from-video")
 async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
-    audio_path = cut_audio(data.book_id, data.start, data.end)
-    screenshot_path = take_screenshot(data.book_id, data.start)
+    video_id = normalize_uuid(data.book_id)
+    audio_path = cut_audio(video_id, data.start, data.end)
+    screenshot_path = take_screenshot(video_id, data.start)
     note = {
         "deckName": "Mandarin Sentence Mining",
         "modelName": "Mandarin Sentence Mining",
@@ -71,7 +73,7 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
                 "fields": ["SentenceImage"],
             }
         ],
-        "tags": ["mogao", "needs-processing", f"mogao-{data.book_id}"],
+        "tags": ["mogao", "needs-processing", f"mogao-{video_id}"],
     }
     call_anki("addNote", note=note)
     asyncio.create_task(postprocessor.check_and_process())
@@ -113,7 +115,7 @@ async def upload_video(
 
 
 @router.post("/upload-subtitles/{video_id}")
-async def upload_subtitles(video_id: str, file: UploadFile = File(...)):
+async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
     """
     Handles subtitles upload and processing.
     """
@@ -126,7 +128,7 @@ async def upload_subtitles(video_id: str, file: UploadFile = File(...)):
             detail=f"Only subtitle files are allowed: {ALLOWED_VIDEO_EXTENSIONS}",
         )
     temp_filename = f"temp_{uuid.uuid4()}.{extension}"
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     output_dir = os.path.join(VIDEO_LIBRARY_PATH, safe_id)
     if not os.path.exists(output_dir):
         print(f"Video not found")
@@ -153,7 +155,7 @@ async def upload_subtitles(video_id: str, file: UploadFile = File(...)):
         pickle.dump(video_pickle, v)
     load_video_cached.cache_clear()
 
-    asyncio.create_task(process_subtitles_background(video_id))
+    asyncio.create_task(process_subtitles_background(safe_id))
 
     return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
 
@@ -255,12 +257,11 @@ async def download_video(request: DownloadRequest, background_tasks: BackgroundT
 
 
 @router.get("/{video_id}/cover.jpg")
-async def serve_thumbnail(video_id: str):
+async def serve_thumbnail(video_id: UUID):
     """
     Serves the video thumbnail.
     """
-    # Security check: ensure video_id is clean
-    safe_video_id = os.path.basename(video_id)
+    safe_video_id = normalize_uuid(video_id)
 
     img_path = os.path.join(VIDEO_LIBRARY_PATH, safe_video_id, "cover.jpg")
 
@@ -271,12 +272,11 @@ async def serve_thumbnail(video_id: str):
 
 
 @router.post("/delete/{video_id}")
-async def delete_video(video_id: str):
+async def delete_video(video_id: UUID):
     """
     Deletes a video folder and refreshes the cache.
     """
-    # Security: Sanitizing to ensure no one deletes ../system_files
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id)
 
     if os.path.exists(video_path):
@@ -293,14 +293,14 @@ async def delete_video(video_id: str):
 
 
 @router.get("/watch/{video_id}", response_class=HTMLResponse)
-async def watch_video(request: Request, video_id: str):
+async def watch_video(request: Request, video_id: UUID):
     """The main video player interface."""
-    video = load_video_cached(video_id)
+    safe_id = normalize_uuid(video_id)
+    video = load_video_cached(safe_id)
     if not video:
         raise HTTPException(status_code=404, detail="video not found")
 
     # TODO: refactor
-    safe_id = os.path.basename(video_id)
     subtitles_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
     has_subtitles = os.path.exists(subtitles_path)
 
@@ -314,7 +314,7 @@ async def watch_video(request: Request, video_id: str):
         {
             "request": request,
             "video": video,
-            "video_id": video_id,
+            "video_id": safe_id,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
             "video_base_path": video_base_path(),
@@ -323,8 +323,8 @@ async def watch_video(request: Request, video_id: str):
 
 
 @router.get("/stream/{video_id}")
-def stream_video(video_id: str):
-    safe_id = os.path.basename(video_id)
+def stream_video(video_id: UUID):
+    safe_id = normalize_uuid(video_id)
     video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
 
     if os.path.exists(video_path):
@@ -334,8 +334,8 @@ def stream_video(video_id: str):
 
 
 @router.get("/{video_id}/subtitles")
-def get_subtitles(video_id: str):
-    safe_id = os.path.basename(video_id)
+def get_subtitles(video_id: UUID):
+    safe_id = normalize_uuid(video_id)
     subtitle_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
 
     if os.path.exists(subtitle_path):
@@ -345,9 +345,8 @@ def get_subtitles(video_id: str):
 
 
 @router.get("/api/video-dict/{video_id}", response_class=JSONResponse)
-async def get_video_dict_api(video_id: str):
-    safe_id = os.path.basename(video_id)
-    data = load_video_dict(safe_id)
+async def get_video_dict_api(video_id: UUID):
+    data = load_video_dict(str(video_id))
     return JSONResponse(data)
 
 

@@ -7,6 +7,7 @@ import shutil
 import uuid
 from functools import lru_cache
 from typing import Optional
+from uuid import UUID
 
 from dotenv import load_dotenv
 
@@ -22,7 +23,7 @@ from pydantic import BaseModel
 
 from anki import call_anki, get_all_words_from_anki_deck
 from book import Book, ChapterContent, Metadata, TOCEntry, generate_book
-from constants import LIBRARY_PATH
+from constants import LIBRARY_PATH, normalize_uuid
 from dependencies import postprocessor, templates
 from library import (
     get_progress_path,
@@ -60,14 +61,14 @@ app.include_router(video_router.router)
 
 
 class ProgressRequest(BaseModel):
-    book_id: str
+    book_id: UUID
     chapter_index: int
     scroll_percentage: float
 
 
 @app.post("/api/save-progress")
 async def save_progress_api(data: ProgressRequest):
-    save_progress(data.book_id, data.chapter_index, data.scroll_percentage)
+    save_progress(str(data.book_id), data.chapter_index, data.scroll_percentage)
     return {"status": "ok"}
 
 
@@ -90,14 +91,13 @@ async def get_settings_api():
 
 
 @app.get("/api/book-dict/{book_id}", response_class=JSONResponse)
-async def get_book_dict_api(book_id: str):
-    safe_id = os.path.basename(book_id)
-    data = load_book_dict(safe_id)
+async def get_book_dict_api(book_id: UUID):
+    data = load_book_dict(str(book_id))
     return JSONResponse(data)
 
 
 class NewCardRequest(BaseModel):
-    book_id: str
+    book_id: UUID
     word: str
     pinyin: str
     sentence: str
@@ -226,12 +226,11 @@ async def upload_book(files: list[UploadFile] = File(...)):
 
 
 @app.post("/delete/{book_id}")
-async def delete_book(book_id: str):
+async def delete_book(book_id: UUID):
     """
     Deletes a book folder and refreshes the cache.
     """
-    # Security: Sanitizing to ensure no one deletes ../system_files
-    safe_id = os.path.basename(book_id)
+    safe_id = normalize_uuid(book_id)
     book_path = os.path.join(LIBRARY_PATH, safe_id)
 
     if os.path.exists(book_path):
@@ -248,30 +247,32 @@ async def delete_book(book_id: str):
 
 
 @app.get("/read/{book_id}", response_class=HTMLResponse)
-async def redirect_to_last_read(request: Request, book_id: str):
+async def redirect_to_last_read(request: Request, book_id: UUID):
     """Helper to go to the last read chapter."""
-    progress = load_progress(book_id)
+    safe_id = normalize_uuid(book_id)
+    progress = load_progress(safe_id)
     last_chapter_index = progress.get("chapter_index", 0)
-    return RedirectResponse(url=f"/read/{book_id}/{last_chapter_index}")
+    return RedirectResponse(url=f"/read/{safe_id}/{last_chapter_index}")
 
 
 @app.get("/read/{book_id}/{chapter_index}", response_class=HTMLResponse)
-async def read_chapter(request: Request, book_id: str, chapter_index: int):
+async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     """The main reader interface."""
-    book = load_book_cached(book_id)
+    safe_id = normalize_uuid(book_id)
+    book = load_book_cached(safe_id)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
     if chapter_index < 0 or chapter_index >= len(book.spine):
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    progress = load_progress(book_id)
+    progress = load_progress(safe_id)
     saved_chapter = progress.get("chapter_index", -1)
     initial_scroll_percentage = 0.0
     if saved_chapter == chapter_index:
         initial_scroll_percentage = progress.get("scroll_percentage", 0.0)
 
-    save_progress(book_id, chapter_index, initial_scroll_percentage)
+    save_progress(safe_id, chapter_index, initial_scroll_percentage)
 
     current_chapter = book.spine[chapter_index]
     # Calculate Prev/Next links
@@ -287,7 +288,7 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
             "book": book,
             "current_chapter": current_chapter,
             "chapter_index": chapter_index,
-            "book_id": book_id,
+            "book_id": safe_id,
             "prev_idx": prev_idx,
             "next_idx": next_idx,
             "initial_scroll_percentage": initial_scroll_percentage,
@@ -297,14 +298,13 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
 
 
 @app.get("/read/{book_id}/images/{image_name}")
-async def serve_image(book_id: str, image_name: str):
+async def serve_image(book_id: UUID, image_name: str):
     """
     Serves images specifically for a book.
     The HTML contains <img src="images/pic.jpg">.
     The browser resolves this to /read/{book_id}/images/pic.jpg.
     """
-    # Security check: ensure book_id is clean
-    safe_book_id = os.path.basename(book_id)
+    safe_book_id = normalize_uuid(book_id)
     safe_image_name = os.path.basename(image_name)
 
     img_path = os.path.join(LIBRARY_PATH, safe_book_id, "images", safe_image_name)

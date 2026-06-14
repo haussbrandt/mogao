@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from constants import VIDEO_LIBRARY_PATH
+from constants import VIDEO_LIBRARY_PATH, normalize_uuid
 
 
 @dataclass
@@ -178,7 +178,7 @@ def generate_video(path, original_filename) -> tuple[Video, str]:
 
 
 def take_screenshot(video_id, timestamp):
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
     output_path = f"/tmp/mogao/{uuid.uuid4()}.jpg"
     os.makedirs("/tmp/mogao", exist_ok=True)
@@ -202,7 +202,7 @@ def take_screenshot(video_id, timestamp):
 
 
 def cut_audio(video_id, start, end):
-    safe_id = os.path.basename(video_id)
+    safe_id = normalize_uuid(video_id)
     video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
     output_path = f"/tmp/mogao/{uuid.uuid4()}.aac"
     os.makedirs("/tmp/mogao", exist_ok=True)

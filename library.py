@@ -5,7 +5,7 @@ import pickle
 from typing import Optional
 
 from book import Book
-from constants import LIBRARY_PATH
+from constants import LIBRARY_PATH, normalize_uuid
 
 
 @lru_cache(maxsize=10)
@@ -14,7 +14,11 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
     Loads the book from the pickle file.
     Cached so we don't re-read the disk on every click.
     """
-    file_path = os.path.join(LIBRARY_PATH, folder_name, "book.pkl")
+    try:
+        safe_id = normalize_uuid(folder_name)
+    except ValueError:
+        return None
+    file_path = os.path.join(LIBRARY_PATH, safe_id, "book.pkl")
     if not os.path.exists(file_path):
         return None
 
@@ -29,7 +33,7 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
 
 def get_progress_path(book_id: str) -> str:
     """Returns the path to the progress.json file for a given book."""
-    safe_id = os.path.basename(book_id)
+    safe_id = normalize_uuid(book_id)
     return os.path.join(LIBRARY_PATH, safe_id, "progress.json")
 
 
