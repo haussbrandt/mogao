@@ -45,7 +45,7 @@ window.addToAnkiFromVideo = function (btn, id) {
     b.disabled = true;
   });
   deckWords.add(word);
-  fetch("/api/new-card-from-video", {
+  fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/new-card-from-video`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

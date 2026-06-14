@@ -137,6 +137,7 @@ class NewCardFromVideoRequest(BaseModel):
 
 # TODO: Refactor
 @app.post("/api/new-card-from-video")
+@app.post("/video/api/new-card-from-video")
 async def create_new_anki_card(data: NewCardFromVideoRequest):
     audio_path = cut_audio(data.book_id, data.start, data.end)
     screenshot_path = take_screenshot(data.book_id, data.start)

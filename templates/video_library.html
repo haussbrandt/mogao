@@ -62,7 +62,7 @@
               onclick="
                 const url = document.getElementById('yt-link').value.trim();
                 if (!url) return;
-                fetch('/download-video', {
+                fetch('{{ video_base_path }}/download-video', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ url }),
@@ -73,7 +73,7 @@
             </button>
           </div>
           <form
-            action="/upload"
+            action="{{ video_base_path }}/upload"
             method="post"
             enctype="multipart/form-data"
           >
@@ -102,10 +102,10 @@
           data-chars="{{ video.character_count }}"
           data-length="{{ video.length }}"
           data-mined="{{ video.tagged_cards_count }}"
-          onclick="window.location.href='/watch/{{ video.id }}'"
+          onclick="window.location.href='{{ video_base_path }}/watch/{{ video.id }}'"
         >
           <form
-            action="/delete/{{ video.id }}"
+            action="{{ video_base_path }}/delete/{{ video.id }}"
             method="post"
             class="delete-form"
             onsubmit="
@@ -148,7 +148,7 @@
         const cards = Array.from(grid.getElementsByClassName("video-card"));
 
         try {
-          const response = await fetch("/api/get-settings");
+          const response = await fetch("{{ video_base_path }}/api/get-settings");
           const settings = await response.json();
           if (settings.sort_order) {
             selector.value = settings.sort_order;
