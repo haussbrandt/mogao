@@ -81,21 +81,29 @@ function renderTranscript() {
   });
 }
 
-function scrollTranscriptLineIntoPosition(line, behavior = "smooth") {
+function scrollTranscriptLineIntoPosition(
+  line,
+  behavior = "smooth",
+  visibleBottomOverride,
+) {
   if (!line || !transcriptLines || transcriptPanel.hidden) return;
 
   const linesRect = transcriptLines.getBoundingClientRect();
-  const visibleBottom = popup.classList.contains("visible")
-    ? window.innerHeight - popup.offsetHeight
-    : linesRect.bottom;
+  const visibleBottom =
+    visibleBottomOverride ??
+    (popup.classList.contains("visible")
+      ? window.innerHeight - popup.offsetHeight
+      : linesRect.bottom);
   const visibleHeight = Math.max(0, visibleBottom - linesRect.top);
   const targetTop = linesRect.top + visibleHeight * 0.45;
   const lineTop = line.getBoundingClientRect().top;
+  const scrollDistance = lineTop - targetTop;
 
-  transcriptLines.scrollBy({
-    top: lineTop - targetTop,
-    behavior,
-  });
+  if (behavior === "instant") {
+    transcriptLines.scrollTop += scrollDistance;
+  } else {
+    transcriptLines.scrollBy({ top: scrollDistance, behavior });
+  }
 }
 
 function updateActiveTranscriptLine(idx) {
@@ -150,7 +158,13 @@ if (window.MOGAO_CONFIG.hasSubtitles) {
 function closePopup() {
   resetUI({ keepSpacer: false });
   overlay.classList.remove("popup-open");
+  const transcriptWasPopupOpen =
+    transcriptPanel?.classList.contains("popup-open");
   transcriptPanel?.classList.remove("popup-open");
+  const activeLine = transcriptLines?.querySelector(".transcript-line.active");
+  if (transcriptWasPopupOpen) {
+    scrollTranscriptLineIntoPosition(activeLine, "instant", window.innerHeight);
+  }
 }
 
 function resetUI({ keepSpacer } = {}) {
