@@ -10,20 +10,20 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from video import cut_audio, take_screenshot
+load_dotenv()
+
 import video_router
 
-load_dotenv()
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from anki import Postprocessor, call_anki, get_all_words_from_anki_deck
+from anki import call_anki, get_all_words_from_anki_deck
 from book import Book, ChapterContent, Metadata, TOCEntry, generate_book
 from constants import LIBRARY_PATH
-from dependencies import templates
+from dependencies import postprocessor, templates
 from library import (
     get_progress_path,
     load_book_cached,
@@ -57,9 +57,6 @@ app.mount(
     name="static",
 )
 app.include_router(video_router.router)
-
-postprocessor = Postprocessor()
-
 
 class ProgressRequest(BaseModel):
     book_id: str
@@ -122,55 +119,6 @@ async def create_new_anki_card(data: NewCardRequest):
     call_anki("addNote", note=note)
     asyncio.create_task(postprocessor.check_and_process())
     call_anki("sync")
-    return {"status": "ok"}
-
-
-class NewCardFromVideoRequest(BaseModel):
-    book_id: str  # FIXME: leftover from copying
-    word: str
-    pinyin: str
-    sentence: str
-    definitions: str
-    start: float
-    end: float
-
-
-# TODO: Refactor
-@app.post("/api/new-card-from-video")
-@app.post("/video/api/new-card-from-video")
-async def create_new_anki_card(data: NewCardFromVideoRequest):
-    audio_path = cut_audio(data.book_id, data.start, data.end)
-    screenshot_path = take_screenshot(data.book_id, data.start)
-    note = {
-        "deckName": "Mandarin Sentence Mining",
-        "modelName": "Mandarin Sentence Mining",
-        "fields": {
-            "Simplified": data.word,
-            "Pinyin.1": data.pinyin,
-            "SentenceSimplified": data.sentence,
-            "Meaning": data.definitions,
-        },
-        "audio": [
-            {
-                "path": audio_path,
-                "filename": audio_path,
-                "fields": ["SentenceAudio"],
-            },
-        ],
-        "picture": [
-            {
-                "path": screenshot_path,
-                "filename": screenshot_path,
-                "fields": ["SentenceImage"],
-            }
-        ],
-        "tags": ["mogao", "needs-processing", f"mogao-{data.book_id}"],
-    }
-    call_anki("addNote", note=note)
-    asyncio.create_task(postprocessor.check_and_process())
-    call_anki("sync")
-    os.remove(audio_path)
-    os.remove(screenshot_path)
     return {"status": "ok"}
 
 
