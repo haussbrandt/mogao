@@ -13,9 +13,9 @@ from pydantic import BaseModel
 
 from anki import call_anki, get_all_words_from_anki_deck
 from constants import VIDEO_LIBRARY_PATH
-from dependencies import templates
+from dependencies import postprocessor, templates
 from llm_processor import load_video_dict, process_subtitles_background
-from video import Video, generate_video
+from video import Video, cut_audio, generate_video, take_screenshot
 from video_library import (
     get_video_progress_path,
     load_video_cached,
@@ -26,9 +26,65 @@ from video_library import (
 router = APIRouter(prefix="/video")
 
 
+def video_base_path() -> str:
+    """Return the configured public URL prefix used by the video frontend."""
+    base_path = os.environ.get("MOGAO_VIDEO_BASE_PATH", router.prefix).strip()
+    if not base_path:
+        return ""
+    return f"/{base_path.strip('/')}"
+
+
+class NewCardFromVideoRequest(BaseModel):
+    book_id: str  # FIXME: leftover from copying
+    word: str
+    pinyin: str
+    sentence: str
+    definitions: str
+    start: float
+    end: float
+
+
+@router.post("/api/new-card-from-video")
+async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
+    audio_path = cut_audio(data.book_id, data.start, data.end)
+    screenshot_path = take_screenshot(data.book_id, data.start)
+    note = {
+        "deckName": "Mandarin Sentence Mining",
+        "modelName": "Mandarin Sentence Mining",
+        "fields": {
+            "Simplified": data.word,
+            "Pinyin.1": data.pinyin,
+            "SentenceSimplified": data.sentence,
+            "Meaning": data.definitions,
+        },
+        "audio": [
+            {
+                "path": audio_path,
+                "filename": audio_path,
+                "fields": ["SentenceAudio"],
+            },
+        ],
+        "picture": [
+            {
+                "path": screenshot_path,
+                "filename": screenshot_path,
+                "fields": ["SentenceImage"],
+            }
+        ],
+        "tags": ["mogao", "needs-processing", f"mogao-{data.book_id}"],
+    }
+    call_anki("addNote", note=note)
+    asyncio.create_task(postprocessor.check_and_process())
+    call_anki("sync")
+    os.remove(audio_path)
+    os.remove(screenshot_path)
+    return {"status": "ok"}
+
+
 @router.post("/upload")
 async def upload_video(
-    background_tasks: BackgroundTasks, files: list[UploadFile] = File(...)
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
 ):
     """
     Handles video upload.
@@ -53,7 +109,7 @@ async def upload_video(
         background_tasks.add_task(generate_video, temp_filename, file.filename)
 
     load_video_cached.cache_clear()
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
 
 
 @router.post("/upload-subtitles/{video_id}")
@@ -99,7 +155,7 @@ async def upload_subtitles(video_id: str, file: UploadFile = File(...)):
 
     asyncio.create_task(process_subtitles_background(video_id))
 
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
 
 
 # TODO: refactor, move to correct file etc.
@@ -215,7 +271,7 @@ async def serve_thumbnail(video_id: str):
 
 
 @router.post("/delete/{video_id}")
-async def delete_video(video_id: str, request: Request):
+async def delete_video(video_id: str):
     """
     Deletes a video folder and refreshes the cache.
     """
@@ -233,7 +289,7 @@ async def delete_video(video_id: str, request: Request):
     else:
         raise HTTPException(status_code=404, detail="video not found")
 
-    return RedirectResponse(url=request.url_for("video_library_view"), status_code=303)
+    return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
 
 
 @router.get("/watch/{video_id}", response_class=HTMLResponse)
@@ -260,6 +316,7 @@ async def watch_video(request: Request, video_id: str):
             "video_id": video_id,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
+            "video_base_path": video_base_path(),
         },
     )
 
@@ -341,7 +398,9 @@ async def video_library_view(request: Request):
                         "title": video.metadata.title,
                         "character_count": getattr(video, "character_count", 0),
                         "tagged_cards_count": len(tagged_card_ids),
-                        "cover_url": f"/{item}/{video.cover_image}",
+                        "cover_url": (
+                            f"{video_base_path()}/{item}/{video.cover_image}"
+                        ),
                         "processed_at": video.processed_at,
                         "last_watch_time": last_watch_time,
                     }
@@ -373,5 +432,9 @@ async def video_library_view(request: Request):
         videos.sort(key=lambda x: x["tagged_cards_count"])
     return templates.TemplateResponse(
         "video_library.html",
-        {"request": request, "videos": videos},
+        {
+            "request": request,
+            "videos": videos,
+            "video_base_path": video_base_path(),
+        },
     )

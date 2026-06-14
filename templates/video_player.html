@@ -47,7 +47,11 @@
     </div>
     {% endif %}
     <div id="player-container">
-      <video id="video" controls src="/stream/{{ video_id }}"></video>
+      <video
+        id="video"
+        controls
+        src="{{ video_base_path }}/stream/{{ video_id }}"
+      ></video>
       <div id="subtitle-overlay"></div>
     </div>
 
@@ -64,6 +68,7 @@
   <script>
     window.MOGAO_CONFIG = {
 		videoId: "{{ video_id }}",
+		videoBasePath: "{{ video_base_path }}",
 		hasSubtitles: {{ has_subtitles | tojson }},
 		deckWords: {{ deck_words | tojson }},
     };
