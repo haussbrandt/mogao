@@ -1,6 +1,10 @@
+function getLookupRoot(startNode) {
+  return startNode.parentElement?.closest("[data-lookup-root]") || bookContent;
+}
+
 function getTreeWalker(startNode) {
   const walker = document.createTreeWalker(
-    bookContent,
+    getLookupRoot(startNode),
     NodeFilter.SHOW_TEXT,
     null,
     false,
@@ -34,11 +38,12 @@ function getSentence(startNode, startOffset) {
 	const terminators = /[。！？.!?]/;
 	const closingQuotes = /[""''»」)）】\]]/;
 	const originBlock = getBlockParent(startNode);
+	const lookupRoot = getLookupRoot(startNode);
 
 	// Walk Backwards (Find Start)
 	let leftText = "";
 	const backWalker = document.createTreeWalker(
-	  bookContent,
+	  lookupRoot,
 	  NodeFilter.SHOW_TEXT,
 	  null,
 	  false,
@@ -92,7 +97,7 @@ function getSentence(startNode, startOffset) {
 
 		// Look ahead for closing quotes/spaces
 		let tempWalker = document.createTreeWalker(
-		  bookContent,
+		  lookupRoot,
 		  NodeFilter.SHOW_TEXT,
 		  null,
 		  false,

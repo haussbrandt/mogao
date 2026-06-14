@@ -2,6 +2,9 @@ const video = document.getElementById("video");
 const overlay = document.getElementById("subtitle-overlay");
 const popup = document.getElementById("def-popup");
 const popBody = document.getElementById("pop-body");
+const modeToggle = document.getElementById("subtitle-mode-toggle");
+const transcriptPanel = document.getElementById("transcript-panel");
+const transcriptLines = document.getElementById("transcript-lines");
 const deckWords = new Set(window.MOGAO_CONFIG.deckWords);
 
 const bookContent = overlay; // FIXME: HACK to make textprocessor.js work
@@ -11,6 +14,8 @@ function initStatsButton(bookContent) {} // FIXME: Another HACK to make dictiona
 let segmentedSubs = [];
 let currentHighlightSpans = [];
 let currentSentence = "";
+let selectedSubIndex = -1;
+let activeLookupRoot = overlay;
 
 function timeToSeconds(t) {
   const [h, m, s] = t.replace(",", ".").split(":");
@@ -19,21 +24,90 @@ function timeToSeconds(t) {
 
 function parseSRT(text) {
   return text
+    .replace(/\r\n?/g, "\n")
     .trim()
     .split(/\n\n+/)
     .map((block) => {
       const lines = block.split("\n");
+      if (lines.length < 3 || !lines[1].includes(" --> ")) return null;
       const [start, end] = lines[1].split(" --> ").map(timeToSeconds);
       const text = lines
         .slice(2)
         .join(" ")
         .replace(/<[^>]+>/g, "");
       return { start, end, text };
-    });
+    })
+    .filter(Boolean);
 }
 
 function renderSubtitle(sub) {
-  overlay.innerHTML = `<span>${sub.text}</span>`;
+  overlay.innerHTML = "";
+  const span = document.createElement("span");
+  span.className = "subtitle-text";
+  span.textContent = sub.text;
+  overlay.appendChild(span);
+}
+
+function formatTimestamp(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+    : `${minutes}:${String(secs).padStart(2, "0")}`;
+}
+
+function renderTranscript() {
+  if (!transcriptLines) return;
+  transcriptLines.innerHTML = "";
+  segmentedSubs.forEach((sub, index) => {
+    const line = document.createElement("div");
+    line.className = "transcript-line";
+    line.dataset.subIndex = index;
+
+    const time = document.createElement("button");
+    time.type = "button";
+    time.className = "transcript-time";
+    time.textContent = formatTimestamp(sub.start);
+    time.setAttribute("aria-label", `Seek to ${time.textContent}`);
+
+    const text = document.createElement("span");
+    text.className = "transcript-text";
+    text.dataset.lookupRoot = "";
+    text.textContent = sub.text;
+
+    line.append(time, text);
+    transcriptLines.appendChild(line);
+  });
+}
+
+function scrollTranscriptLineIntoPosition(line, behavior = "smooth") {
+  if (!line || !transcriptLines || transcriptPanel.hidden) return;
+
+  const linesRect = transcriptLines.getBoundingClientRect();
+  const visibleBottom = popup.classList.contains("visible")
+    ? window.innerHeight - popup.offsetHeight
+    : linesRect.bottom;
+  const visibleHeight = Math.max(0, visibleBottom - linesRect.top);
+  const targetTop = linesRect.top + visibleHeight * 0.45;
+  const lineTop = line.getBoundingClientRect().top;
+
+  transcriptLines.scrollBy({
+    top: lineTop - targetTop,
+    behavior,
+  });
+}
+
+function updateActiveTranscriptLine(idx) {
+  if (!transcriptLines) return;
+  const previousLine = transcriptLines.querySelector(".transcript-line.active");
+  previousLine?.classList.remove("active");
+  previousLine?.removeAttribute("aria-current");
+  if (idx === -1) return;
+  const activeLine = transcriptLines.querySelector(`[data-sub-index="${idx}"]`);
+  activeLine?.classList.add("active");
+  activeLine?.setAttribute("aria-current", "true");
+  scrollTranscriptLineIntoPosition(activeLine);
 }
 
 let lastSubIndex = -1;
@@ -44,6 +118,7 @@ function updateSubtitle() {
   if (idx === lastSubIndex) return;
   lastSubIndex = idx;
   idx === -1 ? (overlay.innerHTML = "") : renderSubtitle(segmentedSubs[idx]);
+  updateActiveTranscriptLine(idx);
 }
 
 function tick() {
@@ -60,12 +135,14 @@ if (window.MOGAO_CONFIG.hasSubtitles) {
     `${window.MOGAO_CONFIG.videoBasePath}/${window.MOGAO_CONFIG.videoId}/subtitles`,
   )
     .then((r) => {
-      if (!r.ok) throw new Error("Subtitle fetch failed: ${r.status}");
+      if (!r.ok) throw new Error(`Subtitle fetch failed: ${r.status}`);
       return r.text();
     })
     .then((text) => {
       segmentedSubs = parseSRT(text);
+      renderTranscript();
       lastSubIndex = -1;
+      updateSubtitle();
     })
     .catch((err) => console.error("Could not load subtitles:", err));
 }
@@ -73,6 +150,7 @@ if (window.MOGAO_CONFIG.hasSubtitles) {
 function closePopup() {
   resetUI({ keepSpacer: false });
   overlay.classList.remove("popup-open");
+  transcriptPanel?.classList.remove("popup-open");
 }
 
 function resetUI({ keepSpacer } = {}) {
@@ -87,14 +165,42 @@ function resetUI({ keepSpacer } = {}) {
     }
   });
   currentHighlightSpans = [];
-  if (!keepSpacer) overlay.normalize();
+  if (!keepSpacer) activeLookupRoot.normalize();
 }
 
 document.getElementById("close-popup").addEventListener("click", closePopup);
 
-overlay.addEventListener("click", async function (e) {
-  if (!localDict) return;
+function setTranscriptMode(enabled) {
+  if (!transcriptPanel || !modeToggle) return;
+  closePopup();
+  transcriptPanel.hidden = !enabled;
+  overlay.hidden = enabled;
+  modeToggle.textContent = enabled ? "Subtitles" : "Transcript";
+  modeToggle.setAttribute("aria-pressed", String(enabled));
+  if (enabled) updateActiveTranscriptLine(lastSubIndex);
+}
+
+modeToggle?.addEventListener("click", () => {
+  setTranscriptMode(transcriptPanel.hidden);
+});
+
+transcriptLines?.addEventListener("click", (e) => {
+  const time = e.target.closest(".transcript-time");
+  if (!time) return;
+  const line = time.closest(".transcript-line");
+  video.currentTime = segmentedSubs[Number(line.dataset.subIndex)].start;
+  video.play();
+});
+
+function lookupSubtitle(e) {
+  const subtitleText = e.target.closest(".subtitle-text, .transcript-text");
+  if (!subtitleText || !localDict) return;
   video.pause();
+  const transcriptLine = subtitleText.closest(".transcript-line");
+  selectedSubIndex = transcriptLine
+    ? Number(transcriptLine.dataset.subIndex)
+    : lastSubIndex;
+  activeLookupRoot = subtitleText.closest("[data-lookup-root]") || overlay;
 
   let range,
     x = e.clientX,
@@ -152,6 +258,8 @@ overlay.addEventListener("click", async function (e) {
     '<div style="padding:30px;text-align:center;color:#999;">Searching...</div>';
   popup.classList.add("visible");
   overlay.classList.add("popup-open");
+  transcriptPanel?.classList.add("popup-open");
+  scrollTranscriptLineIntoPosition(transcriptLine, "auto");
 
   const results = performLookup(textChunk);
   popBody.innerHTML = "";
@@ -177,7 +285,7 @@ overlay.addEventListener("click", async function (e) {
           ),
         );
         const stringifiedSubsSegment = JSON.stringify(
-          segmentedSubs[lastSubIndex],
+          segmentedSubs[selectedSubIndex],
         ).replace(/"/g, "&quot;");
         const ankiBtn = `<button class="anki-btn"
               ${deckWords.has(item.word) ? "disabled" : ""}
@@ -203,10 +311,17 @@ overlay.addEventListener("click", async function (e) {
     popBody.innerHTML =
       '<div style="padding:30px;text-align:center;color:#999;">No definition found.</div>';
   }
-});
+}
+
+overlay.addEventListener("click", lookupSubtitle);
+transcriptLines?.addEventListener("click", lookupSubtitle);
 
 document.addEventListener("click", (e) => {
-  if (!popup.contains(e.target) && !overlay.contains(e.target)) {
+  if (
+    !popup.contains(e.target) &&
+    !overlay.contains(e.target) &&
+    !transcriptLines?.contains(e.target)
+  ) {
     closePopup();
   }
 });

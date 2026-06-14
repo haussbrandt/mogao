@@ -46,13 +46,31 @@
       <span id="sub-upload-status"></span>
     </div>
     {% endif %}
-    <div id="player-container">
-      <video
-        id="video"
-        controls
-        src="{{ video_base_path }}/stream/{{ video_id }}"
-      ></video>
-      <div id="subtitle-overlay"></div>
+    <div id="player-layout">
+      <div id="player-container">
+        {% if has_subtitles %}
+        <button
+          id="subtitle-mode-toggle"
+          type="button"
+          aria-pressed="false"
+          aria-controls="transcript-panel"
+        >
+          Transcript
+        </button>
+        {% endif %}
+        <video
+          id="video"
+          controls
+          src="{{ video_base_path }}/stream/{{ video_id }}"
+        ></video>
+        <div id="subtitle-overlay" data-lookup-root></div>
+      </div>
+      {% if has_subtitles %}
+      <aside id="transcript-panel" aria-label="Video transcript" hidden>
+        <div id="transcript-header">Transcript</div>
+        <div id="transcript-lines"></div>
+      </aside>
+      {% endif %}
     </div>
 
     <div id="def-popup">
