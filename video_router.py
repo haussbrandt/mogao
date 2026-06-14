@@ -309,6 +309,7 @@ async def watch_video(request: Request, video_id: str):
     deck_words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
 
     return templates.TemplateResponse(
+        request,
         "video_player.html",
         {
             "request": request,
@@ -431,6 +432,7 @@ async def video_library_view(request: Request):
     elif current_sort == "mined_rev":
         videos.sort(key=lambda x: x["tagged_cards_count"])
     return templates.TemplateResponse(
+        request,
         "video_library.html",
         {
             "request": request,

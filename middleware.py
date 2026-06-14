@@ -82,8 +82,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         samesite="strict",
                     )
                     return response
-            except Exception:
-                pass
+            except Exception as e:
+                print(e)
 
         # 3. Nothing valid → challenge
         return Response(

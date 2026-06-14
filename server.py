@@ -58,6 +58,7 @@ app.mount(
 )
 app.include_router(video_router.router)
 
+
 class ProgressRequest(BaseModel):
     book_id: str
     chapter_index: int
@@ -184,6 +185,7 @@ async def library_view(request: Request):
     elif current_sort == "mined_rev":
         books.sort(key=lambda x: x["tagged_cards_count"])
     return templates.TemplateResponse(
+        request,
         "library.html",
         {"request": request, "books": books},
     )
@@ -278,6 +280,7 @@ async def read_chapter(request: Request, book_id: str, chapter_index: int):
     deck_words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
 
     return templates.TemplateResponse(
+        request,
         "reader.html",
         {
             "request": request,
