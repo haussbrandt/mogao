@@ -31,7 +31,7 @@
       href="{{ url_for('static', path='site.webmanifest') }}"
     />
   </head>
-  <body>
+  <body data-video-base-path="{{ video_base_path }}">
     <div class="container">
       <div class="header-row">
         <h1>Videos</h1>
@@ -59,24 +59,11 @@
             <button
               id="yt-submit"
               class="btn yt-btn"
-              onclick="
-                const url = document.getElementById('yt-link').value.trim();
-                if (!url) return;
-                fetch('{{ video_base_path }}/download-video', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ url }),
-                });
-              "
             >
               Download
             </button>
           </div>
-          <form
-            action="{{ video_base_path }}/upload"
-            method="post"
-            enctype="multipart/form-data"
-          >
+          <div class="upload-control">
             <label for="video-upload" class="btn upload-btn">
               + Add Videos
             </label>
@@ -87,10 +74,13 @@
               name="files"
               multiple
               accept="video/*"
-              onchange="this.form.submit()"
             />
-          </form>
+          </div>
         </div>
+      </div>
+      <div id="upload-status" class="upload-status" hidden>
+        <div id="upload-status-text"></div>
+        <progress id="upload-progress" max="100" value="0"></progress>
       </div>
       <div class="video-grid">
         {% for video in videos %}
@@ -102,16 +92,12 @@
           data-chars="{{ video.character_count }}"
           data-length="{{ video.length }}"
           data-mined="{{ video.tagged_cards_count }}"
-          onclick="window.location.href='{{ video_base_path }}/watch/{{ video.id }}'"
+          data-watch-url="{{ video_base_path }}/watch/{{ video.id }}"
         >
           <form
             action="{{ video_base_path }}/delete/{{ video.id }}"
             method="post"
             class="delete-form"
-            onsubmit="
-              return confirm('Are you sure you want to delete this video?');
-            "
-            onclick="event.stopPropagation()"
           >
             <button type="submit" class="delete-btn">x</button>
           </form>
@@ -141,69 +127,6 @@
         {% endfor %}
       </div>
     </div>
-    <script>
-      document.addEventListener("DOMContentLoaded", async () => {
-        const grid = document.getElementsByClassName("video-grid")[0];
-        const selector = document.getElementById("sort-selector");
-        const cards = Array.from(grid.getElementsByClassName("video-card"));
-
-        try {
-          const response = await fetch("{{ video_base_path }}/api/get-settings");
-          const settings = await response.json();
-          if (settings.sort_order) {
-            selector.value = settings.sort_order;
-          }
-        } catch (e) {
-          console.error("Could not load settings", e);
-        }
-
-        const sortVideos = () => {
-          const criteria = selector.value;
-
-          cards.sort((a, b) => {
-            switch (criteria) {
-              case "title":
-                return a.dataset.title.localeCompare(b.dataset.title);
-              case "title_rev":
-                return b.dataset.title.localeCompare(a.dataset.title);
-              case "last_watch":
-                return Number(b.dataset.watch) - Number(a.dataset.watch);
-              case "last_watch_rev":
-                return Number(a.dataset.watch) - Number(b.dataset.watch);
-              case "date_added":
-                return b.dataset.added.localeCompare(a.dataset.added);
-              case "date_added_rev":
-                return a.dataset.added.localeCompare(b.dataset.added);
-              case "chars":
-                return Number(b.dataset.chars) - Number(a.dataset.chars);
-              case "chars_rev":
-                return Number(a.dataset.chars) - Number(b.dataset.chars);
-              case "length":
-                return Number(b.dataset.length) - Number(a.dataset.length);
-              case "length_rev":
-                return Number(a.dataset.length) - Number(b.dataset.length);
-              case "mined":
-                return Number(b.dataset.mined) - Number(a.dataset.mined);
-              case "mined_rev":
-                return Number(a.dataset.mined) - Number(b.dataset.mined);
-              default:
-                return 0;
-            }
-          });
-          cards.forEach((card) => grid.appendChild(card));
-        };
-
-        selector.addEventListener("change", async () => {
-          sortVideos();
-          await fetch("/api/save-sort", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sort_order: selector.value }),
-          });
-        });
-
-        sortVideos();
-      });
-    </script>
+    <script src="{{ url_for('static', path='video_library.js') }}"></script>
   </body>
 </html>

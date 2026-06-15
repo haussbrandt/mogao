@@ -45,6 +45,7 @@ from middleware import AuthMiddleware
 async def lifespan(app: FastAPI):
     asyncio.create_task(postprocessor.check_and_process())
     asyncio.create_task(resume_interrupted_processing())
+    asyncio.create_task(video_router.cleanup_processing_jobs())
     yield
 
 

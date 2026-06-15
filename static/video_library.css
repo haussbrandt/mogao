@@ -132,6 +132,30 @@ h1 {
   transform: scale(1.1);
 }
 
+.upload-btn.disabled {
+  cursor: wait;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.upload-status {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-body);
+  margin-bottom: 20px;
+  padding: 10px;
+}
+
+.upload-status.error {
+  border-color: var(--accent-danger);
+}
+
+.upload-status progress {
+  margin-top: 8px;
+  width: 100%;
+}
+
 .video-cover {
   height: 140px;
   margin-bottom: 2px;
@@ -229,4 +253,3 @@ select:focus {
     gap: 6px;
   }
 }
-

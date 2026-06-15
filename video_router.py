@@ -1,10 +1,12 @@
 import asyncio
 import glob
+import json
 import os
 import pickle
 import re
 import shutil
 import subprocess
+import time
 import uuid
 from uuid import UUID
 
@@ -26,6 +28,12 @@ from video_library import (
 
 router = APIRouter(prefix="/video")
 
+ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm")
+CHUNK_UPLOAD_PATH = "video_uploads"
+CHUNK_SIZE = 50 * 1024 * 1024
+PROCESSING_JOB_RETENTION_SECONDS = 60 * 60
+processing_jobs: dict[UUID, dict] = {}
+
 
 def video_base_path() -> str:
     """Return the configured public URL prefix used by the video frontend."""
@@ -33,6 +41,72 @@ def video_base_path() -> str:
     if not base_path:
         return ""
     return f"/{base_path.strip('/')}"
+
+
+def validate_video_filename(filename: str) -> tuple[str, str]:
+    safe_filename = os.path.basename(filename)
+    extension = os.path.splitext(safe_filename)[1].lower()
+    if not safe_filename or extension not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only video files are allowed: {ALLOWED_VIDEO_EXTENSIONS}",
+        )
+    return safe_filename, extension
+
+
+def chunk_upload_dir(upload_id: UUID) -> str:
+    return os.path.join(CHUNK_UPLOAD_PATH, str(upload_id))
+
+
+def load_chunk_upload(upload_id: UUID) -> tuple[str, dict]:
+    upload_dir = chunk_upload_dir(upload_id)
+    metadata_path = os.path.join(upload_dir, "metadata.json")
+    try:
+        with open(metadata_path) as metadata_file:
+            return upload_dir, json.load(metadata_file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+
+def prune_processing_jobs():
+    cutoff = time.time() - PROCESSING_JOB_RETENTION_SECONDS
+    expired = [
+        upload_id
+        for upload_id, job in processing_jobs.items()
+        if job["status"] in ("complete", "failed") and job.get("finished_at", 0) < cutoff
+    ]
+    for upload_id in expired:
+        processing_jobs.pop(upload_id, None)
+
+
+async def cleanup_processing_jobs():
+    while True:
+        await asyncio.sleep(60)
+        prune_processing_jobs()
+
+
+def write_processing_status(upload_id: UUID, status: str, **details):
+    prune_processing_jobs()
+    job = {"status": status, **details}
+    if status in ("complete", "failed"):
+        job["finished_at"] = time.time()
+    processing_jobs[upload_id] = job
+
+
+def process_chunked_video(path: str, original_filename: str, upload_id: UUID):
+    try:
+        _, output_dir = generate_video(path, original_filename)
+        load_video_cached.cache_clear()
+        write_processing_status(
+            upload_id,
+            "complete",
+            video_id=os.path.basename(output_dir),
+        )
+    except Exception as e:
+        print(f"Error processing chunked video upload {upload_id}: {e}")
+        if os.path.exists(path):
+            os.remove(path)
+        write_processing_status(upload_id, "failed", detail=str(e))
 
 
 class NewCardFromVideoRequest(BaseModel):
@@ -92,26 +166,144 @@ async def upload_video(
     Handles video upload.
     Saves to temp, processes with generate_video, clears temp, refreshes library.
     """
-    ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm")
-
     for file in files:
-        extension = os.path.splitext(file.filename)[1].lower()
-        if extension not in ALLOWED_VIDEO_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Only video files are allowed: {ALLOWED_VIDEO_EXTENSIONS}",
-            )
-        temp_filename = f"temp_{uuid.uuid4()}.{extension}"
+        original_filename, extension = validate_video_filename(file.filename or "")
+        temp_filename = f"temp_{uuid.uuid4()}{extension}"
         try:
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
         except Exception as e:
             print(f"Error processing video: {e}")
             raise HTTPException(status_code=500, detail="Failed to process video")
-        background_tasks.add_task(generate_video, temp_filename, file.filename)
+        background_tasks.add_task(generate_video, temp_filename, original_filename)
 
     load_video_cached.cache_clear()
     return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
+
+
+class StartChunkUploadRequest(BaseModel):
+    filename: str
+    size: int
+
+
+@router.post("/upload-chunks/start")
+async def start_chunk_upload(data: StartChunkUploadRequest):
+    filename, extension = validate_video_filename(data.filename)
+    if data.size <= 0:
+        raise HTTPException(status_code=400, detail="Video file is empty")
+
+    upload_id = uuid.uuid4()
+    upload_dir = chunk_upload_dir(upload_id)
+    os.makedirs(upload_dir, exist_ok=False)
+    metadata = {
+        "filename": filename,
+        "extension": extension,
+        "size": data.size,
+        "chunk_size": CHUNK_SIZE,
+        "total_chunks": (data.size + CHUNK_SIZE - 1) // CHUNK_SIZE,
+    }
+    with open(os.path.join(upload_dir, "metadata.json"), "w") as metadata_file:
+        json.dump(metadata, metadata_file)
+    with open(os.path.join(upload_dir, "assembled"), "wb"):
+        pass
+
+    return {
+        "upload_id": str(upload_id),
+        "chunk_size": CHUNK_SIZE,
+        "total_chunks": metadata["total_chunks"],
+    }
+
+
+@router.put("/upload-chunks/{upload_id}/{chunk_index}")
+async def upload_video_chunk(upload_id: UUID, chunk_index: int, request: Request):
+    upload_dir, metadata = load_chunk_upload(upload_id)
+    total_chunks = metadata["total_chunks"]
+    if chunk_index < 0 or chunk_index >= total_chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+
+    expected_size = min(
+        metadata["chunk_size"],
+        metadata["size"] - chunk_index * metadata["chunk_size"],
+    )
+    expected_offset = chunk_index * metadata["chunk_size"]
+    assembled_path = os.path.join(upload_dir, "assembled")
+    assembled_size = os.path.getsize(assembled_path)
+    if assembled_size == expected_offset + expected_size:
+        return {"status": "already_uploaded"}
+    if assembled_size != expected_offset:
+        raise HTTPException(status_code=409, detail="Chunks must be uploaded in order")
+
+    partial_path = os.path.join(upload_dir, "chunk.partial")
+    bytes_written = 0
+    try:
+        with open(partial_path, "wb") as chunk_file:
+            async for data in request.stream():
+                bytes_written += len(data)
+                if bytes_written > expected_size:
+                    raise HTTPException(status_code=400, detail="Chunk is too large")
+                chunk_file.write(data)
+
+        if bytes_written != expected_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid chunk size: expected {expected_size}, got {bytes_written}",
+            )
+        with open(assembled_path, "ab") as assembled_file:
+            with open(partial_path, "rb") as chunk_file:
+                shutil.copyfileobj(chunk_file, assembled_file)
+    finally:
+        if os.path.exists(partial_path):
+            os.remove(partial_path)
+
+    return {"status": "uploaded"}
+
+
+@router.post("/upload-chunks/{upload_id}/complete")
+async def complete_chunk_upload(upload_id: UUID, background_tasks: BackgroundTasks):
+    upload_dir, metadata = load_chunk_upload(upload_id)
+    assembled_path = os.path.join(upload_dir, "assembled")
+
+    try:
+        if os.path.getsize(assembled_path) != metadata["size"]:
+            raise HTTPException(status_code=409, detail="Upload is incomplete")
+
+        temp_filename = f"temp_{uuid.uuid4()}{metadata['extension']}"
+        shutil.move(assembled_path, temp_filename)
+    except HTTPException:
+        if os.path.exists(assembled_path):
+            os.remove(assembled_path)
+        raise
+    except Exception as e:
+        if os.path.exists(assembled_path):
+            os.remove(assembled_path)
+        print(f"Error assembling chunked video upload: {e}")
+        raise HTTPException(status_code=500, detail="Failed to assemble video upload")
+
+    shutil.rmtree(upload_dir)
+    write_processing_status(upload_id, "processing")
+    background_tasks.add_task(
+        process_chunked_video, temp_filename, metadata["filename"], upload_id
+    )
+    return {"status": "processing", "processing_id": str(upload_id)}
+
+
+@router.get("/upload-chunks/{upload_id}/status")
+async def chunk_upload_status(upload_id: UUID):
+    prune_processing_jobs()
+    status = processing_jobs.get(upload_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Processing job not found")
+    if status["status"] in ("complete", "failed"):
+        processing_jobs.pop(upload_id, None)
+    return status
+
+
+@router.delete("/upload-chunks/{upload_id}")
+async def cancel_chunk_upload(upload_id: UUID):
+    upload_dir = chunk_upload_dir(upload_id)
+    if os.path.exists(upload_dir):
+        shutil.rmtree(upload_dir)
+    return {"status": "cancelled"}
 
 
 @router.post("/upload-subtitles/{video_id}")
