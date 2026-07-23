@@ -244,7 +244,7 @@ a.toc-link.active {
   transition: opacity 0.2s;
 }
 
-#dep-popup.visible ~ #char-progress {
+#def-popup.visible ~ #char-progress {
   opacity: 0;
 }
 
@@ -362,34 +362,6 @@ body:has(#sidebar.active) #seg-toggle {
   margin-right: 6px;
   vertical-align: middle;
   border-radius: 2px;
-}
-
-#seg-mode-btns {
-  display: flex;
-  gap: 5px;
-  margin-top: 10px;
-}
-#seg-mode-btns button {
-  flex: 1;
-  background: #444;
-  color: #aaa;
-  border: 1px solid #555;
-  border-radius: 6px;
-  padding: 5px 4px;
-  cursor: pointer;
-  font-size: 11px;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-#seg-mode-btns button.active {
-  background: #666;
-  color: #fff;
-  border-color: #888;
-}
-#seg-mode-btns button:hover {
-  background: #555;
-  color: #fff;
 }
 
 #stats-btn {

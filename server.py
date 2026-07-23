@@ -1,19 +1,13 @@
 import asyncio
-from contextlib import asynccontextmanager
-import json
 import os
-import pickle
 import shutil
 import uuid
-from functools import lru_cache
-from typing import Optional
+from contextlib import asynccontextmanager
 from uuid import UUID
 
 from dotenv import load_dotenv
 
 load_dotenv()
-
-import video_router
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
@@ -21,8 +15,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import video_router
 from anki import call_anki, get_all_words_from_anki_deck
-from book import Book, ChapterContent, Metadata, TOCEntry, generate_book
+from book import generate_book
 from constants import LIBRARY_PATH, normalize_uuid
 from dependencies import postprocessor, templates
 from library import (
@@ -248,7 +243,7 @@ async def delete_book(book_id: UUID):
 
 
 @app.get("/read/{book_id}", response_class=HTMLResponse)
-async def redirect_to_last_read(request: Request, book_id: UUID):
+async def redirect_to_last_read(book_id: UUID):
     """Helper to go to the last read chapter."""
     safe_id = normalize_uuid(book_id)
     progress = load_progress(safe_id)

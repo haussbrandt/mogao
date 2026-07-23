@@ -1,9 +1,5 @@
 function findAndGo(filename) {
-  // The TOC usually has specific filenames e.g. "text/part001.html"
-  // Sometimes it has anchors "text/part001.html#header"
-  // We strip the anchor to find the page index
   const cleanFile = filename.split("#")[0];
-  const anchor = filename.split("#")[1];
 
   const idx = window.MOGAO_CONFIG.spineMap[cleanFile];
 

@@ -1,18 +1,16 @@
 # This file is heavily inspired by https://github.com/karpathy/reader3/blob/master/reader3.py
-from ast import Dict
 import os
 import pickle
 import shutil
 import uuid
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote
 
 import ebooklib
-from ebooklib import epub
 from bs4 import BeautifulSoup, Comment
+from ebooklib import epub
 
 
 @dataclass
@@ -104,7 +102,7 @@ def extract_plain_text(soup: BeautifulSoup) -> str:
     return " ".join(text.split())
 
 
-def parse_toc_recursive(toc_list, depth=0):
+def parse_toc_recursive(toc_list):
     """
     Recursively parses the TOC structure from ebooklib.
     """
@@ -119,7 +117,7 @@ def parse_toc_recursive(toc_list, depth=0):
                 href=section.href,
                 file_href=section.href.split("#")[0],
                 anchor=section.href.split("#")[1] if "#" in section.href else "",
-                children=parse_toc_recursive(children, depth + 1),
+                children=parse_toc_recursive(children),
             )
             result.append(entry)
         elif isinstance(item, epub.Link):

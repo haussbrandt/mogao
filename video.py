@@ -159,9 +159,7 @@ def generate_video(path, original_filename) -> tuple[Video, str]:
         f"{output_dir}/cover.jpg",
     ]
 
-    result = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     processed_video = Video(
         metadata=metadata,

@@ -1,10 +1,10 @@
 # build_dictionary.py
 import glob
 import json
-import re
-from constants import DICT_PATH, FREQ_PATH
-import server
 import os
+import re
+
+from constants import DICT_PATH, FREQ_PATH
 
 CHINESE_DICT = {}
 CHINESE_FREQ = {}
@@ -29,7 +29,6 @@ def convert_pinyin_tone(pinyin_str):
         base, tone = match.groups()
         tone_idx = int(tone) - 1
         base = base.replace("u:", "ü").replace("v", "ü")
-        target_char = None
         idx = -1
         for char in ["a", "e", "o"]:
             if char in base:

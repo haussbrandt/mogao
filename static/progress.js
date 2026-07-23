@@ -3,7 +3,6 @@ let ignoreNextScroll = false;
 const charProgressDisplay = document.getElementById("char-progress");
 const bookContentElement = document.getElementsByClassName("book-content")[0];
 
-
 function countChineseChars(str) {
   const matches = str.match(/[\u4e00-\u9fff]/g);
   return matches ? matches.length : 0;
@@ -59,7 +58,6 @@ function countReadCharacters() {
       const range = document.createRange();
       range.selectNodeContents(node);
 
-      const textChars = [...text];
       const textByteLength = text.length;
 
       // Binary search to find the last visible character

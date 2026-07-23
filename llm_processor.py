@@ -2,14 +2,13 @@ import asyncio
 import json
 import os
 import pickle
-from datetime import datetime
 import re
+from datetime import datetime
 from typing import Optional
 
 import google.generativeai as genai  # type: ignore
 from google.api_core import retry_async
 from google.generativeai.types import RequestOptions
-from pydantic import BaseModel
 
 from constants import LIBRARY_PATH, VIDEO_LIBRARY_PATH, normalize_uuid
 
