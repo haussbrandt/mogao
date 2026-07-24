@@ -203,18 +203,21 @@ def cut_audio(video_id, start, end):
     safe_id = normalize_uuid(video_id)
     video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
     output_path = f"/tmp/mogao/{uuid.uuid4()}.aac"
+    duration = end - start
     os.makedirs("/tmp/mogao", exist_ok=True)
     cmd = [
         "ffmpeg",
         "-ss",
         str(start),
-        "-to",
-        str(end),
         "-i",
         video_path,
+        "-t",
+        str(duration),
         "-vn",
         "-c:a",
-        "copy",
+        "aac",
+        "-b:a",
+        "128k",
         output_path,
         "-y",
     ]

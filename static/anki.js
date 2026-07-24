@@ -52,7 +52,7 @@ window.addToAnkiFromVideo = function (btn, id) {
       book_id: id,
       word: word,
       pinyin: pinyin,
-      sentence: currentSentence,
+      sentence: subs.text,
       definitions: definitionsHTML,
       start: subs.start,
       end: subs.end,
