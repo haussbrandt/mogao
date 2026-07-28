@@ -1,0 +1,15 @@
+[anki]
+url = "http://localhost:8765"
+deck = "Mandarin Sentence Mining"
+model = "Mandarin Sentence Mining"
+
+[anki.fields]
+word = "Simplified"
+pinyin = "Pinyin.1"
+sentence = "SentenceSimplified"
+meaning = "Meaning"
+sentence_pinyin = "SentencePinyin.1"
+sentence_meaning = "SentenceMeaning"
+word_audio = "Audio"
+sentence_audio = "SentenceAudio"
+sentence_image = "SentenceImage"

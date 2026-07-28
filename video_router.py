@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import BaseModel
 
 from anki import call_anki, get_all_words_from_anki_deck
+from config import settings
 from constants import VIDEO_LIBRARY_PATH, normalize_uuid
 from dependencies import postprocessor, templates
 from llm_processor import load_video_dict, process_subtitles_background
@@ -73,7 +74,8 @@ def prune_processing_jobs():
     expired = [
         upload_id
         for upload_id, job in processing_jobs.items()
-        if job["status"] in ("complete", "failed") and job.get("finished_at", 0) < cutoff
+        if job["status"] in ("complete", "failed")
+        and job.get("finished_at", 0) < cutoff
     ]
     for upload_id in expired:
         processing_jobs.pop(upload_id, None)
@@ -125,26 +127,26 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
     audio_path = cut_audio(video_id, data.start, data.end)
     screenshot_path = take_screenshot(video_id, data.start)
     note = {
-        "deckName": "Mandarin Sentence Mining",
-        "modelName": "Mandarin Sentence Mining",
+        "deckName": settings.anki.deck,
+        "modelName": settings.anki.model,
         "fields": {
-            "Simplified": data.word,
-            "Pinyin.1": data.pinyin,
-            "SentenceSimplified": data.sentence,
-            "Meaning": data.definitions,
+            settings.anki.fields.word: data.word,
+            settings.anki.fields.pinyin: data.pinyin,
+            settings.anki.fields.sentence: data.sentence,
+            settings.anki.fields.meaning: data.definitions,
         },
         "audio": [
             {
                 "path": audio_path,
                 "filename": audio_path,
-                "fields": ["SentenceAudio"],
+                "fields": [settings.anki.fields.sentence_audio],
             },
         ],
         "picture": [
             {
                 "path": screenshot_path,
                 "filename": screenshot_path,
-                "fields": ["SentenceImage"],
+                "fields": [settings.anki.fields.sentence_image],
             }
         ],
         "tags": ["mogao", "needs-processing", f"mogao-{video_id}"],
@@ -498,7 +500,9 @@ async def watch_video(request: Request, video_id: UUID):
 
     # progress = load_video_progress(video_id)
 
-    deck_words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
+    deck_words = get_all_words_from_anki_deck(
+        settings.anki.deck, settings.anki.fields.word
+    )
 
     return templates.TemplateResponse(
         request,

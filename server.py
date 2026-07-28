@@ -18,6 +18,7 @@ from pydantic import BaseModel
 import video_router
 from anki import call_anki, get_all_words_from_anki_deck
 from book import generate_book
+from config import settings
 from constants import LIBRARY_PATH, normalize_uuid
 from dependencies import postprocessor, templates
 from library import (
@@ -103,13 +104,13 @@ class NewCardRequest(BaseModel):
 @app.post("/api/new-card")
 async def create_new_anki_card(data: NewCardRequest):
     note = {
-        "deckName": "Mandarin Sentence Mining",
-        "modelName": "Mandarin Sentence Mining",
+        "deckName": settings.anki.deck,
+        "modelName": settings.anki.model,
         "fields": {
-            "Simplified": data.word,
-            "Pinyin.1": data.pinyin,
-            "SentenceSimplified": data.sentence,
-            "Meaning": data.definitions,
+            settings.anki.fields.word: data.word,
+            settings.anki.fields.pinyin: data.pinyin,
+            settings.anki.fields.sentence: data.sentence,
+            settings.anki.fields.meaning: data.definitions,
         },
         "tags": ["mogao", "needs-processing", "needs-audio", f"mogao-{data.book_id}"],
     }
@@ -274,7 +275,9 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     # Calculate Prev/Next links
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
-    deck_words = get_all_words_from_anki_deck("Mandarin Sentence Mining", "Simplified")
+    deck_words = get_all_words_from_anki_deck(
+        settings.anki.deck, settings.anki.fields.word
+    )
 
     return templates.TemplateResponse(
         request,

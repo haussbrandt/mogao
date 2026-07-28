@@ -1,13 +1,15 @@
 import asyncio
 import base64
-from functools import lru_cache
 import json
 import os
 import time
+from functools import lru_cache
 
 import ffmpeg
 import requests
 from elevenlabs.client import ElevenLabs
+
+from config import settings
 
 
 class Postprocessor:
@@ -87,8 +89,10 @@ class Postprocessor:
             batch_data.append(
                 {
                     "id": card["note"],
-                    "source_text": card["fields"]["SentenceSimplified"]["value"],
-                    "source_word": card["fields"]["Simplified"]["value"],
+                    "source_text": card["fields"][settings.anki.fields.sentence][
+                        "value"
+                    ],
+                    "source_word": card["fields"][settings.anki.fields.word]["value"],
                 }
             )
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -99,9 +103,11 @@ class Postprocessor:
                     note_id = result["id"]
 
                     fields = {
-                        "SentenceSimplified": result["formatted_sentence"],
-                        "SentencePinyin.1": result["sentence_pinyin"],
-                        "SentenceMeaning": result["sentence_meaning"],
+                        settings.anki.fields.sentence: result["formatted_sentence"],
+                        settings.anki.fields.sentence_pinyin: result["sentence_pinyin"],
+                        settings.anki.fields.sentence_meaning: result[
+                            "sentence_meaning"
+                        ],
                     }
 
                     call_anki(
@@ -129,8 +135,8 @@ class Postprocessor:
         for card in cards:
             try:
                 note_id = card["note"]
-                source_text = card["fields"]["SentenceSimplified"]["value"]
-                source_word = card["fields"]["Simplified"]["value"]
+                source_text = card["fields"][settings.anki.fields.sentence]["value"]
+                source_word = card["fields"][settings.anki.fields.word]["value"]
                 print(f"adding audio to {note_id}")
                 sentence_clean = source_text.replace("<u>", "").replace("</u>", "")
                 response = self.call_elevenlabs_api(sentence_clean)
@@ -166,12 +172,12 @@ class Postprocessor:
                             {
                                 "path": f"/tmp/mogao/{note_id}.mp3",
                                 "filename": f"{note_id}.mp3",
-                                "fields": ["SentenceAudio"],
+                                "fields": [settings.anki.fields.sentence_audio],
                             },
                             {
                                 "path": f"/tmp/mogao/{source_word}.mp3",
                                 "filename": f"{source_word}.mp3",
-                                "fields": ["Audio"],
+                                "fields": [settings.anki.fields.word_audio],
                             },
                         ],
                     },
@@ -239,7 +245,7 @@ def call_gemini_batch(api_key, batch_data):
 
 def call_anki(action, **params):
     return requests.post(
-        "http://localhost:8765", json={"action": action, "params": params, "version": 6}
+        settings.anki.url, json={"action": action, "params": params, "version": 6}
     )
 
 
