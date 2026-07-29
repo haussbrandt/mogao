@@ -19,7 +19,7 @@ import video_router
 from anki import call_anki, get_all_words_from_anki_deck
 from book import generate_book
 from config import settings
-from constants import LIBRARY_PATH, normalize_uuid
+from constants import normalize_uuid
 from dependencies import postprocessor, templates
 from library import (
     get_progress_path,
@@ -125,9 +125,9 @@ async def library_view(request: Request):
     """Lists all available processed books."""
     books = []
 
-    if os.path.exists(LIBRARY_PATH):
-        for item in os.listdir(LIBRARY_PATH):
-            if os.path.isdir(os.path.join(LIBRARY_PATH, item)):
+    if os.path.exists(settings.paths.library):
+        for item in os.listdir(settings.paths.library):
+            if os.path.isdir(os.path.join(settings.paths.library, item)):
                 book = load_book_cached(item)
                 if not book:
                     continue
@@ -159,8 +159,8 @@ async def library_view(request: Request):
 
     # Pre-sort before sending to client to avoid a "flicker" where the books are loaded and then quickly sorted and re-ordered
     # TODO: Can it be done cleaner? I don't like that this is being done twice in two different places and languages
-    settings = load_settings()
-    current_sort = settings.get("sort_order", "title")
+    preferences = load_settings()
+    current_sort = preferences.get("sort_order", "title")
     if current_sort == "title":
         books.sort(key=lambda x: x["title"].lower())
     elif current_sort == "title_rev":
@@ -205,7 +205,7 @@ async def upload_book(files: list[UploadFile] = File(...)):
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
 
-            book = generate_book(temp_filename, LIBRARY_PATH)
+            book = generate_book(temp_filename, settings.paths.library)
             load_book_cached.cache_clear()
 
             book_id = str(book.metadata.generate_key())
@@ -228,7 +228,7 @@ async def delete_book(book_id: UUID):
     Deletes a book folder and refreshes the cache.
     """
     safe_id = normalize_uuid(book_id)
-    book_path = os.path.join(LIBRARY_PATH, safe_id)
+    book_path = os.path.join(settings.paths.library, safe_id)
 
     if os.path.exists(book_path):
         try:
@@ -306,7 +306,9 @@ async def serve_image(book_id: UUID, image_name: str):
     safe_book_id = normalize_uuid(book_id)
     safe_image_name = os.path.basename(image_name)
 
-    img_path = os.path.join(LIBRARY_PATH, safe_book_id, "images", safe_image_name)
+    img_path = os.path.join(
+        settings.paths.library, safe_book_id, "images", safe_image_name
+    )
 
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="Image not found")

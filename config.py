@@ -1,13 +1,13 @@
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 CONFIG_PATH = Path(__file__).with_name("config.toml")
 
 
 class SettingsModel(BaseModel):
-    model_config = ConfigDict(
+    model_config = ConfigDict(  # pyright: ignore[reportUnannotatedClassAttribute]
         frozen=True,
         extra="forbid",
     )
@@ -32,8 +32,23 @@ class AnkiSettings(SettingsModel):
     fields: AnkiFields
 
 
+class Paths(SettingsModel):
+    library: Path
+    video_library: Path
+    dictionary: Path
+    frequencies: Path
+
+    @field_validator("*")
+    @classmethod
+    def resolve_path(cls, value: Path) -> Path:
+        if value.is_absolute():
+            return value
+        return CONFIG_PATH.parent / value
+
+
 class AppSettings(SettingsModel):
     anki: AnkiSettings
+    paths: Paths
 
 
 def load_settings() -> AppSettings:

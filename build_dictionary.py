@@ -4,7 +4,7 @@ import json
 import os
 import re
 
-from constants import DICT_PATH, FREQ_PATH
+from config import settings
 
 CHINESE_DICT = {}
 CHINESE_FREQ = {}
@@ -49,14 +49,14 @@ def convert_pinyin_tone(pinyin_str):
 
 def load_dictionary():
     global CHINESE_DICT
-    if not os.path.exists(DICT_PATH):
-        print(f"Warning: {DICT_PATH} not found.")
+    if not os.path.exists(settings.paths.dictionary):
+        print(f"Warning: {settings.paths.dictionary} not found.")
         return
 
     print("Loading dictionary...")
     pattern = re.compile(r"(\S+)\s+(\S+)\s+\[(.*?)\]\s+/(.*)/")
 
-    with open(DICT_PATH, "r", encoding="utf-8") as f:
+    with open(settings.paths.dictionary, "r", encoding="utf-8") as f:
         for line in f:
             if line.startswith("#") or not line.strip():
                 continue
@@ -99,8 +99,8 @@ def load_frequency():
     Calculates the Harmonic Mean of ranks across all files.
     """
     global CHINESE_FREQ
-    if not os.path.exists(FREQ_PATH):
-        print(f"Warning: {FREQ_PATH} directory not found.")
+    if not os.path.exists(settings.paths.frequencies):
+        print(f"Warning: {settings.paths.frequencies} directory not found.")
         return
 
     print("Loading frequency data (this might take a moment)...")
@@ -108,7 +108,8 @@ def load_frequency():
     temp_scores = {}  # word -> [score1, score2, ...]
 
     files = glob.glob(
-        os.path.join(FREQ_PATH, "**", "*term_meta_bank*.json"), recursive=True
+        os.path.join(settings.paths.frequencies, "**", "*term_meta_bank*.json"),
+        recursive=True,
     )
 
     if not files:

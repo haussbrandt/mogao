@@ -10,7 +10,8 @@ import google.generativeai as genai  # type: ignore
 from google.api_core import retry_async
 from google.generativeai.types import RequestOptions
 
-from constants import LIBRARY_PATH, VIDEO_LIBRARY_PATH, normalize_uuid
+from config import settings
+from constants import normalize_uuid
 
 CHUNK_SIZE_CHARS = 20_000
 RATE_LIMIT_PER_MIN = 14  # It's actually 15, but sometimes API was complaining
@@ -31,7 +32,7 @@ def _get_rate_lock() -> asyncio.Lock:
 
 def get_book_dict_path(book_id: str) -> str:
     safe_id = normalize_uuid(book_id)
-    return os.path.join(LIBRARY_PATH, safe_id, "book_dict.json")
+    return os.path.join(settings.paths.library, safe_id, "book_dict.json")
 
 
 def load_book_dict(book_id: str) -> dict:
@@ -54,7 +55,7 @@ def _save_book_dict(book_id: str, data: dict) -> None:
 
 def get_video_dict_path(video_id: str) -> str:
     safe_id = normalize_uuid(video_id)
-    return os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles_dict.json")
+    return os.path.join(settings.paths.video_library, safe_id, "subtitles_dict.json")
 
 
 def load_video_dict(video_id: str) -> dict:
@@ -370,7 +371,9 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
     model = genai.GenerativeModel(model_name)
 
     safe_id = normalize_uuid(video_id)
-    subtitles_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
+    subtitles_path = os.path.join(
+        settings.paths.video_library, safe_id, "subtitles.srt"
+    )
     if not os.path.exists(subtitles_path):
         return
 
@@ -475,10 +478,10 @@ async def resume_interrupted_processing() -> None:
     """
     # TODO: Refactor
     try:
-        for book_id in os.listdir(LIBRARY_PATH):
-            if not os.path.isdir(book_id):
+        for book_id in os.listdir(settings.paths.library):
+            if not os.path.isdir(settings.paths.library / book_id):
                 continue
-            pkl_path = os.path.join(LIBRARY_PATH, book_id, "book.pkl")
+            pkl_path = os.path.join(settings.paths.library, book_id, "book.pkl")
             if not os.path.exists(pkl_path):
                 continue
             dict_path = get_book_dict_path(book_id)
@@ -499,8 +502,8 @@ async def resume_interrupted_processing() -> None:
     except FileNotFoundError:
         pass
     try:
-        for video_id in os.listdir(VIDEO_LIBRARY_PATH):
-            if not os.path.isdir(video_id):
+        for video_id in os.listdir(settings.paths.video_library):
+            if not os.path.isdir(settings.paths.video_library / video_id):
                 continue
             dict_path = get_video_dict_path(video_id)
             try:

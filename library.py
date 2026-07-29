@@ -1,11 +1,12 @@
-from functools import lru_cache
 import json
 import os
 import pickle
+from functools import lru_cache
 from typing import Optional
 
 from book import Book
-from constants import LIBRARY_PATH, normalize_uuid
+from config import settings
+from constants import normalize_uuid
 
 
 @lru_cache(maxsize=10)
@@ -18,7 +19,7 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
         safe_id = normalize_uuid(folder_name)
     except ValueError:
         return None
-    file_path = os.path.join(LIBRARY_PATH, safe_id, "book.pkl")
+    file_path = os.path.join(settings.paths.library, safe_id, "book.pkl")
     if not os.path.exists(file_path):
         return None
 
@@ -34,7 +35,7 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
 def get_progress_path(book_id: str) -> str:
     """Returns the path to the progress.json file for a given book."""
     safe_id = normalize_uuid(book_id)
-    return os.path.join(LIBRARY_PATH, safe_id, "progress.json")
+    return os.path.join(settings.paths.library, safe_id, "progress.json")
 
 
 def save_progress(book_id: str, chapter_index: int, scroll_percentage: float = 0.0):
@@ -68,7 +69,7 @@ def load_progress(book_id: str):
 
 
 def get_settings_path() -> str:
-    return os.path.join(LIBRARY_PATH, "settings.json")
+    return os.path.join(settings.paths.library, "settings.json")
 
 
 def load_settings() -> dict:
@@ -82,10 +83,10 @@ def load_settings() -> dict:
     return {}
 
 
-def save_settings(settings: dict):
+def save_settings(preferences: dict):
     try:
         path = get_settings_path()
         with open(path, "w") as f:
-            json.dump(settings, f)
+            json.dump(preferences, f)
     except Exception as e:
         print(f"Error saving settings: {e}")

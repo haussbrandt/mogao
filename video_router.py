@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from anki import call_anki, get_all_words_from_anki_deck
 from config import settings
-from constants import VIDEO_LIBRARY_PATH, normalize_uuid
+from constants import normalize_uuid
 from dependencies import postprocessor, templates
 from llm_processor import load_video_dict, process_subtitles_background
 from video import Video, cut_audio, generate_video, take_screenshot
@@ -323,7 +323,7 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
         )
     temp_filename = f"temp_{uuid.uuid4()}.{extension}"
     safe_id = normalize_uuid(video_id)
-    output_dir = os.path.join(VIDEO_LIBRARY_PATH, safe_id)
+    output_dir = os.path.join(settings.paths.video_library, safe_id)
     if not os.path.exists(output_dir):
         print(f"Video not found")
         raise HTTPException(status_code=500, detail="Failed to process subtitles")
@@ -457,7 +457,7 @@ async def serve_thumbnail(video_id: UUID):
     """
     safe_video_id = normalize_uuid(video_id)
 
-    img_path = os.path.join(VIDEO_LIBRARY_PATH, safe_video_id, "cover.jpg")
+    img_path = os.path.join(settings.paths.video_library, safe_video_id, "cover.jpg")
 
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="Image not found")
@@ -471,7 +471,7 @@ async def delete_video(video_id: UUID):
     Deletes a video folder and refreshes the cache.
     """
     safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id)
+    video_path = os.path.join(settings.paths.video_library, safe_id)
 
     if os.path.exists(video_path):
         try:
@@ -495,7 +495,9 @@ async def watch_video(request: Request, video_id: UUID):
         raise HTTPException(status_code=404, detail="video not found")
 
     # TODO: refactor
-    subtitles_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
+    subtitles_path = os.path.join(
+        settings.paths.video_library, safe_id, "subtitles.srt"
+    )
     has_subtitles = os.path.exists(subtitles_path)
 
     # progress = load_video_progress(video_id)
@@ -521,7 +523,7 @@ async def watch_video(request: Request, video_id: UUID):
 @router.get("/stream/{video_id}")
 def stream_video(video_id: UUID):
     safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
+    video_path = os.path.join(settings.paths.video_library, safe_id, "video.mp4")
 
     if os.path.exists(video_path):
         return FileResponse(video_path, media_type="video/mp4")
@@ -532,7 +534,7 @@ def stream_video(video_id: UUID):
 @router.get("/{video_id}/subtitles")
 def get_subtitles(video_id: UUID):
     safe_id = normalize_uuid(video_id)
-    subtitle_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "subtitles.srt")
+    subtitle_path = os.path.join(settings.paths.video_library, safe_id, "subtitles.srt")
 
     if os.path.exists(subtitle_path):
         return FileResponse(subtitle_path, media_type="text/plain")
@@ -570,9 +572,9 @@ async def video_library_view(request: Request):
     """Lists all available videos."""
     videos = []
 
-    if os.path.exists(VIDEO_LIBRARY_PATH):
-        for item in os.listdir(VIDEO_LIBRARY_PATH):
-            if os.path.isdir(os.path.join(VIDEO_LIBRARY_PATH, item)):
+    if os.path.exists(settings.paths.video_library):
+        for item in os.listdir(settings.paths.video_library):
+            if os.path.isdir(os.path.join(settings.paths.video_library, item)):
                 video = load_video_cached(item)
                 if not video:
                     continue
@@ -604,8 +606,8 @@ async def video_library_view(request: Request):
 
     # Pre-sort before sending to client to avoid a "flicker" where the videos are loaded and then quickly sorted and re-ordered
     # TODO: Can it be done cleaner? I don't like that this is being done twice in two different places and languages
-    settings = load_video_settings()
-    current_sort = settings.get("sort_order", "title")
+    preferences = load_video_settings()
+    current_sort = preferences.get("sort_order", "title")
     if current_sort == "title":
         videos.sort(key=lambda x: x["title"].lower())
     elif current_sort == "title_rev":

@@ -12,6 +12,8 @@ import ebooklib
 from bs4 import BeautifulSoup, Comment
 from ebooklib import epub
 
+from config import settings
+
 
 @dataclass
 class Metadata:
@@ -169,7 +171,7 @@ def generate_book(path, library_dir) -> Book:
     # Prepare output directories
     # TODO: Ask the user if we should replace the book if it already exists instead of always overwritting it
     os.makedirs(library_dir, exist_ok=True)
-    output_dir = f"library/{unique_key}"
+    output_dir = f"{library_dir}/{unique_key}"
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     images_dir = os.path.join(output_dir, "images")
@@ -299,4 +301,4 @@ def generate_book(path, library_dir) -> Book:
 
 if __name__ == "__main__":
     for path in Path("samples").glob("**/*.epub"):
-        book = generate_book(path, "library")
+        book = generate_book(path, settings.paths.library)

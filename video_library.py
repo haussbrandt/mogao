@@ -1,10 +1,11 @@
-from functools import lru_cache
 import json
 import os
 import pickle
+from functools import lru_cache
 from typing import Optional
 
-from constants import VIDEO_LIBRARY_PATH, normalize_uuid
+from config import settings
+from constants import normalize_uuid
 from video import Video
 
 
@@ -18,7 +19,7 @@ def load_video_cached(folder_name: str) -> Optional[Video]:
         safe_id = normalize_uuid(folder_name)
     except ValueError:
         return None
-    file_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.pkl")
+    file_path = os.path.join(settings.paths.video_library, safe_id, "video.pkl")
     if not os.path.exists(file_path):
         return None
 
@@ -34,7 +35,7 @@ def load_video_cached(folder_name: str) -> Optional[Video]:
 def get_video_progress_path(video_id: str) -> str:
     """Returns the path to the progress.json file for a given video."""
     safe_id = normalize_uuid(video_id)
-    return os.path.join(VIDEO_LIBRARY_PATH, safe_id, "progress.json")
+    return os.path.join(settings.paths.video_library, safe_id, "progress.json")
 
 
 def load_video_progress(video_id: str):
@@ -52,7 +53,7 @@ def load_video_progress(video_id: str):
 
 
 def get_video_settings_path() -> str:
-    return os.path.join(VIDEO_LIBRARY_PATH, "video_settings.json")
+    return os.path.join(settings.paths.video_library, "video_settings.json")
 
 
 def load_video_settings() -> dict:
@@ -66,10 +67,10 @@ def load_video_settings() -> dict:
     return {}
 
 
-def save_video_settings(settings: dict):
+def save_video_settings(preferences: dict):
     try:
         path = get_video_settings_path()
         with open(path, "w") as f:
-            json.dump(settings, f)
+            json.dump(preferences, f)
     except Exception as e:
         print(f"Error saving settings: {e}")

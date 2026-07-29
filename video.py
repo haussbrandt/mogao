@@ -6,8 +6,10 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
-from constants import VIDEO_LIBRARY_PATH, normalize_uuid
+from config import settings
+from constants import normalize_uuid
 
 
 @dataclass
@@ -75,7 +77,7 @@ def probe_audio_codec(path: str) -> str:
     return result.stdout.strip()
 
 
-def generate_video(path, original_filename) -> tuple[Video, str]:
+def generate_video(path, original_filename) -> tuple[Video, Path]:
     cmd = [
         "ffprobe",
         "-v",
@@ -97,8 +99,8 @@ def generate_video(path, original_filename) -> tuple[Video, str]:
 
     metadata = Metadata(original_filename, duration_ts, duration, file_size)
     unique_key = metadata.generate_key()
-    os.makedirs(VIDEO_LIBRARY_PATH, exist_ok=True)
-    output_dir = f"{VIDEO_LIBRARY_PATH}/{unique_key}"
+    os.makedirs(settings.paths.video_library, exist_ok=True)
+    output_dir = settings.paths.video_library / str(unique_key)
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir)
@@ -177,7 +179,7 @@ def generate_video(path, original_filename) -> tuple[Video, str]:
 
 def take_screenshot(video_id, timestamp):
     safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
+    video_path = os.path.join(settings.paths.video_library, safe_id, "video.mp4")
     output_path = f"/tmp/mogao/{uuid.uuid4()}.jpg"
     os.makedirs("/tmp/mogao", exist_ok=True)
     cmd = [
@@ -201,7 +203,7 @@ def take_screenshot(video_id, timestamp):
 
 def cut_audio(video_id, start, end):
     safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(VIDEO_LIBRARY_PATH, safe_id, "video.mp4")
+    video_path = os.path.join(settings.paths.video_library, safe_id, "video.mp4")
     output_path = f"/tmp/mogao/{uuid.uuid4()}.aac"
     duration = end - start
     os.makedirs("/tmp/mogao", exist_ok=True)
