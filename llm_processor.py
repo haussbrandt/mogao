@@ -160,18 +160,35 @@ For each item provide:
 - word: the simplified Chinese
 - pinyin: romanization with tone marks (e.g. "Wáng Míng", "qīngōng"). Do not put spaces within a word - Dursley = Désīlǐ.
 - definition: a concise dictionary-style entry in English. For cultural, religious or domain-specific terms,
-include a one-sentence explanation of what the concept actually is - not just its English equivalent. For proper nouns,
-briefly identify who or what it refers to within this work. Aim for the style of a learner's dictionary or encyclopedia gloss:
-clear, informative, and under 40 words. For real people, include birth and death dates in parentheses. For fictional characters, include the source.
+include a one-sentence explanation of what the concept actually is - not just its English equivalent.
+Aim for the style of a learner's dictionary or encyclopedia gloss:
+clear, informative, and under 40 words. For real people, include birth and death dates in parentheses.
+
+A definition MUST be valid, even if the context is unavailable or the phrase appears in a completely unrelated context.
+A definition MUST NOT summarize, interpret, or refer to anything that happens in the excerpt or elsewhere in the story.
+A defintion MUST be context-independent.
+
+GOOD: A female given name.
+BAD: The protagonist's given name.
+
+Do not identify the character’s role, relationships, importance, actions, or circumstances.
+Once the general dictionary meaning has been given, end the definition immediately. Never append the item’s use, function, ownership, origin, or significance in the excerpt.
+
+Do not put spoilers in the definitions. Do not be overly specific.
+BAD: 克劳迪 - Claudius: The villainous King of Denmark who secretly murdered his brother, King Hamlet, by pouring poison into his ear while he was sleeping in the garden. He marries the Queen and is later stabbed and poisoned by Hamlet.
+
+BAD: 克劳迪 - Claudius: The ruler of Denmark who likes to throw loud drinking parties, gets nervous during a play called *The Mousetrap*, and is seen trying to pray alone in his chapel.
+
+GOOD: 克劳迪 - Claudius: Given name derived from latin *claudus* ("lame" or "enclosed").
 
 Examples:
-Lovelace, Ada (1815–1852). English mathematician often cited as the first computer programmer for her work on CHARLES BABBAGE’S early mechanical general-purpose computer, the Analytical Engine.
+Lovelace, Ada (1815–1852). English mathematician often cited as the first computer programmer.
 
 Wu Zetian (624–705).
-The only woman to rule China as an emperor in her own right (690-705). She founded the Zhou dynasty, expanded the empire, and significantly reformed the imperial examination system to favor meritocracy.
+The only woman to rule China as an emperor in her own right (690-705).
 
 Lin Daiyu (c. 18th Century).
-A central character in the Chinese classic Dream of the Red Chamber. Known for her poetic brilliance and emotional sensitivity, she represents the tragic "frail beauty" archetype in Chinese literature.
+A fictional character in the Chinese classic Dream of the Red Chamber.
 
 
 Do not output anything else. Do not justify your choices in the answer.
