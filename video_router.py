@@ -44,6 +44,15 @@ def video_base_path() -> str:
     return f"/{base_path.strip('/')}"
 
 
+def format_video_duration(duration: float) -> str:
+    total_seconds = max(0, round(duration))
+    hours, remainder = divmod(total_seconds, 60 * 60)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02}:{seconds:02}"
+    return f"{minutes}:{seconds:02}"
+
+
 def validate_video_filename(filename: str) -> tuple[str, str]:
     safe_filename = os.path.basename(filename)
     extension = os.path.splitext(safe_filename)[1].lower()
@@ -548,12 +557,6 @@ async def get_video_dict_api(video_id: UUID):
     return JSONResponse(data)
 
 
-@router.get("/api/get-settings", response_class=JSONResponse)
-async def get_settings_api():
-    current_settings = load_video_settings()
-    return JSONResponse(current_settings)
-
-
 # TODO: This class seems unnecessary
 class SaveVideoSortRequest(BaseModel):
     sort_order: str
@@ -589,11 +592,14 @@ async def video_library_view(request: Request):
                     if os.path.exists(progress_path)
                     else 0
                 )
+                duration = float(video.metadata.duration)
 
                 videos.append(
                     {
                         "id": item,
                         "title": video.metadata.title,
+                        "duration": duration,
+                        "duration_display": format_video_duration(duration),
                         "character_count": getattr(video, "character_count", 0),
                         "tagged_cards_count": len(tagged_card_ids),
                         "cover_url": (
@@ -604,30 +610,8 @@ async def video_library_view(request: Request):
                     }
                 )
 
-    # Pre-sort before sending to client to avoid a "flicker" where the videos are loaded and then quickly sorted and re-ordered
-    # TODO: Can it be done cleaner? I don't like that this is being done twice in two different places and languages
     preferences = load_video_settings()
     current_sort = preferences.get("sort_order", "title")
-    if current_sort == "title":
-        videos.sort(key=lambda x: x["title"].lower())
-    elif current_sort == "title_rev":
-        videos.sort(key=lambda x: x["title"].lower(), reverse=True)
-    elif current_sort == "last_read":
-        videos.sort(key=lambda x: x["last_read_time"], reverse=True)
-    elif current_sort == "last_read_rev":
-        videos.sort(key=lambda x: x["last_read_time"])
-    elif current_sort == "date_added":
-        videos.sort(key=lambda x: x["processed_at"], reverse=True)
-    elif current_sort == "date_added_rev":
-        videos.sort(key=lambda x: x["processed_at"])
-    elif current_sort == "chars":
-        videos.sort(key=lambda x: x["character_count"], reverse=True)
-    elif current_sort == "chars_rev":
-        videos.sort(key=lambda x: x["character_count"])
-    elif current_sort == "mined":
-        videos.sort(key=lambda x: x["tagged_cards_count"], reverse=True)
-    elif current_sort == "mined_rev":
-        videos.sort(key=lambda x: x["tagged_cards_count"])
     return templates.TemplateResponse(
         request,
         "video_library.html",
@@ -635,5 +619,6 @@ async def video_library_view(request: Request):
             "request": request,
             "videos": videos,
             "video_base_path": video_base_path(),
+            "current_sort": current_sort,
         },
     )

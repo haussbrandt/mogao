@@ -81,12 +81,6 @@ async def save_sort_api(data: SaveSortRequest):
     return {"status": "ok"}
 
 
-@app.get("/api/get-settings", response_class=JSONResponse)
-async def get_settings_api():
-    current_settings = load_settings()
-    return JSONResponse(current_settings)
-
-
 @app.get("/api/book-dict/{book_id}", response_class=JSONResponse)
 async def get_book_dict_api(book_id: UUID):
     data = load_book_dict(str(book_id))
@@ -157,34 +151,12 @@ async def library_view(request: Request):
                     }
                 )
 
-    # Pre-sort before sending to client to avoid a "flicker" where the books are loaded and then quickly sorted and re-ordered
-    # TODO: Can it be done cleaner? I don't like that this is being done twice in two different places and languages
     preferences = load_settings()
     current_sort = preferences.get("sort_order", "title")
-    if current_sort == "title":
-        books.sort(key=lambda x: x["title"].lower())
-    elif current_sort == "title_rev":
-        books.sort(key=lambda x: x["title"].lower(), reverse=True)
-    elif current_sort == "last_read":
-        books.sort(key=lambda x: x["last_read_time"], reverse=True)
-    elif current_sort == "last_read_rev":
-        books.sort(key=lambda x: x["last_read_time"])
-    elif current_sort == "date_added":
-        books.sort(key=lambda x: x["processed_at"], reverse=True)
-    elif current_sort == "date_added_rev":
-        books.sort(key=lambda x: x["processed_at"])
-    elif current_sort == "chars":
-        books.sort(key=lambda x: x["character_count"], reverse=True)
-    elif current_sort == "chars_rev":
-        books.sort(key=lambda x: x["character_count"])
-    elif current_sort == "mined":
-        books.sort(key=lambda x: x["tagged_cards_count"], reverse=True)
-    elif current_sort == "mined_rev":
-        books.sort(key=lambda x: x["tagged_cards_count"])
     return templates.TemplateResponse(
         request,
         "library.html",
-        {"request": request, "books": books},
+        {"request": request, "books": books, "current_sort": current_sort},
     )
 
 

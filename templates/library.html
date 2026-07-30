@@ -32,44 +32,49 @@
     <div class="container">
       <div class="header-row">
         <h1>Library</h1>
-	<div class="controls-wrapper">
-    <select id="sort-selector">
-      <option value="title" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>
-      <option value="title_rev" {% if current_sort == 'title_rev' %}selected{% endif %}>Alphabetical (Reverse)</option>
-      <option value="last_read" {% if current_sort == 'last_read' %}selected{% endif %}>Last Read (Recent)</option>
-      <option value="last_read_rev" {% if current_sort == 'last_read_rev' %}selected{% endif %}>Last Read (Oldest)</option>
-      <option value="date_added" {% if current_sort == 'date_added' %}selected{% endif %}>Date Added (Recent)</option>
-      <option value="date_added_rev" {% if current_sort == 'date_added_rev' %}selected{% endif %}>Date Added (Oldest)</option>
-      <option value="chars" {% if current_sort == 'chars' %}selected{% endif %}>Character Count (Highest)</option>
-      <option value="chars_rev" {% if current_sort == 'chars_rev' %}selected{% endif %}>Character Count (Lowest)</option>
-      <option value="mined" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
-      <option value="mined_rev" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
-    </select>
-        <form action="/upload" method="post" enctype="multipart/form-data">
-          <label for="epub-upload" class="btn upload-btn">
-            + Add Books
-          </label>
-          <input
-            id="epub-upload"
-            class="hidden-input"
-            type="file"
-            name="files"
-            multiple
-            accept=".epub"
-            onchange="this.form.submit()"
-          />
-        </form>
+        <div class="controls-wrapper">
+          <select id="sort-selector" data-sort-selector>
+            <option value="title" data-field="title" data-kind="text" data-direction="asc" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>
+            <option value="title_rev" data-field="title" data-kind="text" data-direction="desc" {% if current_sort == 'title_rev' %}selected{% endif %}>Alphabetical (Reverse)</option>
+            <option value="last_read" data-field="read" data-kind="number" data-direction="desc" {% if current_sort == 'last_read' %}selected{% endif %}>Last Read (Recent)</option>
+            <option value="last_read_rev" data-field="read" data-kind="number" data-direction="asc" {% if current_sort == 'last_read_rev' %}selected{% endif %}>Last Read (Oldest)</option>
+            <option value="date_added" data-field="added" data-kind="text" data-direction="desc" {% if current_sort == 'date_added' %}selected{% endif %}>Date Added (Recent)</option>
+            <option value="date_added_rev" data-field="added" data-kind="text" data-direction="asc" {% if current_sort == 'date_added_rev' %}selected{% endif %}>Date Added (Oldest)</option>
+            <option value="chars" data-field="chars" data-kind="number" data-direction="desc" {% if current_sort == 'chars' %}selected{% endif %}>Character Count (Highest)</option>
+            <option value="chars_rev" data-field="chars" data-kind="number" data-direction="asc" {% if current_sort == 'chars_rev' %}selected{% endif %}>Character Count (Lowest)</option>
+            <option value="mined" data-field="mined" data-kind="number" data-direction="desc" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
+            <option value="mined_rev" data-field="mined" data-kind="number" data-direction="asc" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
+          </select>
+          <form action="/upload" method="post" enctype="multipart/form-data">
+            <label for="epub-upload" class="btn upload-btn">
+              + Add Books
+            </label>
+            <input
+              id="epub-upload"
+              class="hidden-input"
+              type="file"
+              name="files"
+              multiple
+              accept=".epub"
+              onchange="this.form.submit()"
+            />
+          </form>
+        </div>
       </div>
-	  </div>
-      <div class="book-grid">
+      <div
+        class="book-grid sort-pending"
+        data-sort-grid
+        data-sort-save-url="/api/save-sort"
+      >
         {% for book in books %}
         <div
           class="book-card"
-		  data-title="{{ book.title }}"
-		  data-added="{{ book.processed_at }}"
-		  data-read="{{ book.last_read_time }}"
-		  data-chars="{{ book.character_count }}"
-		  data-mined="{{ book.tagged_cards_count }}"
+          data-sort-card
+          data-title="{{ book.title }}"
+          data-added="{{ book.processed_at }}"
+          data-read="{{ book.last_read_time }}"
+          data-chars="{{ book.character_count }}"
+          data-mined="{{ book.tagged_cards_count }}"
           onclick="window.location.href='read/{{ book.id }}'"
         >
           <form
@@ -107,65 +112,6 @@
         {% endfor %}
       </div>
     </div>
-	<script>
-	document.addEventListener("DOMContentLoaded", async () => {
-    const grid = document.getElementsByClassName("book-grid")[0];
-    const selector = document.getElementById("sort-selector");
-    const cards = Array.from(grid.getElementsByClassName("book-card"));
-	
-	try {
-		const response = await fetch('/api/get-settings');
-		const settings = await response.json();
-		if (settings.sort_order) {
-			selector.value = settings.sort_order;
-		}
-	} catch (e) {
-		console.error("Could not load settings", e);
-	}
-
-    const sortBooks = () => {
-      const criteria = selector.value;
-      
-      cards.sort((a, b) => {
-            switch (criteria) {
-                case "title":
-                    return a.dataset.title.localeCompare(b.dataset.title);
-                case "title_rev":
-                    return b.dataset.title.localeCompare(a.dataset.title);
-                case "last_read":
-                    return Number(b.dataset.read) - Number(a.dataset.read);
-                case "last_read_rev":
-                    return Number(a.dataset.read) - Number(b.dataset.read);
-                case "date_added":
-                    return b.dataset.added.localeCompare(a.dataset.added);
-                case "date_added_rev":
-                    return a.dataset.added.localeCompare(b.dataset.added);
-                case "chars":
-                    return Number(b.dataset.chars) - Number(a.dataset.chars);
-                case "chars_rev":
-                    return Number(a.dataset.chars) - Number(b.dataset.chars);
-                case "mined":
-                    return Number(b.dataset.mined) - Number(a.dataset.mined);
-                case "mined_rev":
-                    return Number(a.dataset.mined) - Number(b.dataset.mined);
-                default:
-                    return 0;
-            }
-        });
-      cards.forEach(card => grid.appendChild(card));
-    };
-
-	selector.addEventListener("change", async () => {
-        sortBooks();
-        await fetch('/api/save-sort', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sort_order: selector.value })
-        });
-    });
-
-    sortBooks();
-  });
-	</script>
+    <script src="{{ url_for('static', path='library_sort.js') }}"></script>
   </body>
 </html>

@@ -37,17 +37,19 @@
         <h1>Videos</h1>
         <div class="controls-wrapper">
           <!-- prettier-ignore -->
-          <select id="sort-selector">
-			  <option value="title" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>
-			  <option value="title_rev" {% if current_sort == 'title_rev' %}selected{% endif %}>Alphabetical (Reverse)</option>
-			  <option value="last_watch" {% if current_sort == 'last_watch' %}selected{% endif %}>Last Watched (Recent)</option>
-			  <option value="last_watch_rev" {% if current_sort == 'last_watch_rev' %}selected{% endif %}>Last Watched (Oldest)</option>
-			  <option value="date_added" {% if current_sort == 'date_added' %}selected{% endif %}>Date Added (Recent)</option>
-			  <option value="date_added_rev" {% if current_sort == 'date_added_rev' %}selected{% endif %}>Date Added (Oldest)</option>
-			  <option value="chars" {% if current_sort == 'chars' %}selected{% endif %}>Character Count (Highest)</option>
-			  <option value="chars_rev" {% if current_sort == 'chars_rev' %}selected{% endif %}>Character Count (Lowest)</option>
-			  <option value="mined" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
-			  <option value="mined_rev" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
+          <select id="sort-selector" data-sort-selector>
+            <option value="title" data-field="title" data-kind="text" data-direction="asc" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>
+            <option value="title_rev" data-field="title" data-kind="text" data-direction="desc" {% if current_sort == 'title_rev' %}selected{% endif %}>Alphabetical (Reverse)</option>
+            <option value="last_watch" data-field="watch" data-kind="number" data-direction="desc" {% if current_sort == 'last_watch' %}selected{% endif %}>Last Watched (Recent)</option>
+            <option value="last_watch_rev" data-field="watch" data-kind="number" data-direction="asc" {% if current_sort == 'last_watch_rev' %}selected{% endif %}>Last Watched (Oldest)</option>
+            <option value="date_added" data-field="added" data-kind="text" data-direction="desc" {% if current_sort == 'date_added' %}selected{% endif %}>Date Added (Recent)</option>
+            <option value="date_added_rev" data-field="added" data-kind="text" data-direction="asc" {% if current_sort == 'date_added_rev' %}selected{% endif %}>Date Added (Oldest)</option>
+            <option value="chars" data-field="chars" data-kind="number" data-direction="desc" {% if current_sort == 'chars' %}selected{% endif %}>Character Count (Highest)</option>
+            <option value="chars_rev" data-field="chars" data-kind="number" data-direction="asc" {% if current_sort == 'chars_rev' %}selected{% endif %}>Character Count (Lowest)</option>
+            <option value="length" data-field="duration" data-kind="number" data-direction="desc" {% if current_sort == 'length' %}selected{% endif %}>Duration (Longest)</option>
+            <option value="length_rev" data-field="duration" data-kind="number" data-direction="asc" {% if current_sort == 'length_rev' %}selected{% endif %}>Duration (Shortest)</option>
+            <option value="mined" data-field="mined" data-kind="number" data-direction="desc" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
+            <option value="mined_rev" data-field="mined" data-kind="number" data-direction="asc" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
           </select>
           <div class="yt-input-wrapper">
             <input
@@ -82,15 +84,20 @@
         <div id="upload-status-text"></div>
         <progress id="upload-progress" max="100" value="0"></progress>
       </div>
-      <div class="video-grid">
+      <div
+        class="video-grid sort-pending"
+        data-sort-grid
+        data-sort-save-url="{{ video_base_path }}/api/save-sort"
+      >
         {% for video in videos %}
         <div
           class="video-card"
+          data-sort-card
           data-title="{{ video.title }}"
           data-added="{{ video.processed_at }}"
           data-watch="{{ video.last_watch_time }}"
           data-chars="{{ video.character_count }}"
-          data-length="{{ video.length }}"
+          data-duration="{{ video.duration }}"
           data-mined="{{ video.tagged_cards_count }}"
           data-watch-url="{{ video_base_path }}/watch/{{ video.id }}"
         >
@@ -113,7 +120,7 @@
           </div>
           <div class="video-title">{{ video.title }}</div>
           <div class="video-meta">
-            {{ video.length }}<br />
+            {{ video.duration_display }}<br />
             {{"{:,}".format(video.character_count).replace(',', ' ') }}
             characters<br />
             {% if video.tagged_cards_count == 1 %}
@@ -127,6 +134,7 @@
         {% endfor %}
       </div>
     </div>
+    <script src="{{ url_for('static', path='library_sort.js') }}"></script>
     <script src="{{ url_for('static', path='video_library.js') }}"></script>
   </body>
 </html>

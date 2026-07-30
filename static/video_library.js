@@ -1,8 +1,6 @@
 document.addEventListener("DOMContentLoaded", async () => {
   const videoBasePath = document.body.dataset.videoBasePath;
-  const grid = document.querySelector(".video-grid");
-  const selector = document.getElementById("sort-selector");
-  const cards = Array.from(grid.querySelectorAll(".video-card"));
+  const cards = Array.from(document.querySelectorAll(".video-card"));
   const uploadInput = document.getElementById("video-upload");
   const uploadButton = document.querySelector(".upload-btn");
   const uploadStatus = document.getElementById("upload-status");
@@ -158,58 +156,4 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
   });
-
-  try {
-    const response = await fetch(`${videoBasePath}/api/get-settings`);
-    const settings = await response.json();
-    if (settings.sort_order) selector.value = settings.sort_order;
-  } catch (error) {
-    console.error("Could not load settings", error);
-  }
-
-  const sortVideos = () => {
-    const criteria = selector.value;
-    cards.sort((a, b) => {
-      switch (criteria) {
-        case "title":
-          return a.dataset.title.localeCompare(b.dataset.title);
-        case "title_rev":
-          return b.dataset.title.localeCompare(a.dataset.title);
-        case "last_watch":
-          return Number(b.dataset.watch) - Number(a.dataset.watch);
-        case "last_watch_rev":
-          return Number(a.dataset.watch) - Number(b.dataset.watch);
-        case "date_added":
-          return b.dataset.added.localeCompare(a.dataset.added);
-        case "date_added_rev":
-          return a.dataset.added.localeCompare(b.dataset.added);
-        case "chars":
-          return Number(b.dataset.chars) - Number(a.dataset.chars);
-        case "chars_rev":
-          return Number(a.dataset.chars) - Number(b.dataset.chars);
-        case "length":
-          return Number(b.dataset.length) - Number(a.dataset.length);
-        case "length_rev":
-          return Number(a.dataset.length) - Number(b.dataset.length);
-        case "mined":
-          return Number(b.dataset.mined) - Number(a.dataset.mined);
-        case "mined_rev":
-          return Number(a.dataset.mined) - Number(b.dataset.mined);
-        default:
-          return 0;
-      }
-    });
-    cards.forEach((card) => grid.appendChild(card));
-  };
-
-  selector.addEventListener("change", async () => {
-    sortVideos();
-    await fetch(`${videoBasePath}/api/save-sort`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sort_order: selector.value }),
-    });
-  });
-
-  sortVideos();
 });
