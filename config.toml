@@ -24,3 +24,14 @@ library = "library"
 video_library = "video_library"
 dictionary = "dicts/cedict_ts.u8"
 frequencies = "dicts/freqs"
+
+[postprocessing]
+llm = "gemini-flash-latest"
+batch_size = 5
+timeout = 3600
+voice_id = "nhhJXuFAYDroPyaJSlVA"
+
+[dictionary_generation]
+llm = "gemma-4-31b-it"
+chunk_size = 20000
+requests_per_minute = 14

@@ -53,9 +53,24 @@ class Paths(SettingsModel):
         return CONFIG_PATH.parent / value
 
 
+class Postprocessing(SettingsModel):
+    llm: str
+    batch_size: int
+    timeout: int
+    voice_id: str
+
+
+class DictionaryGeneration(SettingsModel):
+    llm: str
+    chunk_size: int
+    requests_per_minute: int
+
+
 class AppSettings(SettingsModel):
     anki: AnkiSettings
     paths: Paths
+    postprocessing: Postprocessing
+    dictionary_generation: DictionaryGeneration
 
 
 def load_settings() -> AppSettings:

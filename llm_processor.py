@@ -13,8 +13,8 @@ from google.generativeai.types import RequestOptions
 from config import settings
 from constants import normalize_uuid
 
-CHUNK_SIZE_CHARS = 20_000
-RATE_LIMIT_PER_MIN = 14  # It's actually 15, but sometimes API was complaining
+CHUNK_SIZE_CHARS = settings.dictionary_generation.chunk_size
+RATE_LIMIT_PER_MIN = settings.dictionary_generation.requests_per_minute
 MIN_INTERVAL_S = 60.0 / RATE_LIMIT_PER_MIN
 
 # Global rate-limiter (shared across all concurrent book-processing tasks)
@@ -272,7 +272,7 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         return
 
     genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMMA_MODEL", "gemma-4-31b-it")
+    model_name = settings.dictionary_generation.llm
     model = genai.GenerativeModel(model_name)
 
     chunks = _chunk_spine(book.spine)
@@ -384,7 +384,7 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         return
 
     genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMMA_MODEL", "gemma-4-31b-it")
+    model_name = settings.dictionary_generation.llm
     model = genai.GenerativeModel(model_name)
 
     safe_id = normalize_uuid(video_id)

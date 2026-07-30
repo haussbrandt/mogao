@@ -13,9 +13,9 @@ from config import settings
 
 
 class Postprocessor:
-    def __init__(self, batch_size=5, timeout=3600) -> None:
-        self.batch_size = batch_size
-        self.timeout = timeout
+    def __init__(self) -> None:
+        self.batch_size = settings.postprocessing.batch_size
+        self.timeout = settings.postprocessing.timeout
         self.last_timer_reset = time.time()
         self.lock = asyncio.Lock()
         self.timer_task = None
@@ -126,7 +126,7 @@ class Postprocessor:
     @lru_cache(maxsize=20)
     def call_elevenlabs_api(self, sentence_clean):
         response = self.eleven_client.text_to_speech.convert_with_timestamps(
-            voice_id="nhhJXuFAYDroPyaJSlVA", text=sentence_clean
+            voice_id=settings.postprocessing.voice_id, text=sentence_clean
         )
         return response
 
@@ -199,7 +199,7 @@ class Postprocessor:
 
 
 def call_gemini_batch(api_key, batch_data):
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.postprocessing.llm}:generateContent?key={api_key}"
 
     # TODO: This prompt is kind of dumb, but it works
     prompt_template = 'You are an expert Chinese language tutor. Analyze the following sentence and provide its English meaning, pinyin transcription and underline each occurence of the word using <u> and </u>. The sentence is: "{source_text}"\nThe word is "{source_word}"'
