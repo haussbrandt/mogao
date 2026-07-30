@@ -158,7 +158,11 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
                 "fields": [settings.anki.fields.sentence_image],
             }
         ],
-        "tags": ["mogao", "needs-processing", f"mogao-{video_id}"],
+        "tags": [
+            settings.anki.tags.app,
+            settings.anki.tags.needs_processing,
+            f"{settings.anki.tags.app}-{video_id}",
+        ],
     }
     call_anki("addNote", note=note)
     asyncio.create_task(postprocessor.check_and_process())
@@ -583,7 +587,7 @@ async def video_library_view(request: Request):
                     continue
 
                 tagged_card_ids = call_anki(
-                    "findCards", query=f"tag:mogao-{item}"
+                    "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
                 ).json()["result"]
 
                 progress_path = get_video_progress_path(item)

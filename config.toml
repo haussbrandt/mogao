@@ -14,6 +14,11 @@ word_audio = "Audio"
 sentence_audio = "SentenceAudio"
 sentence_image = "SentenceImage"
 
+[anki.tags]
+app = "mogao"
+needs_processing = "needs-processing"
+needs_audio = "needs-audio"
+
 [paths]
 library = "library"
 video_library = "video_library"

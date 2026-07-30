@@ -25,11 +25,18 @@ class AnkiFields(SettingsModel):
     sentence_image: str
 
 
+class AnkiTags(SettingsModel):
+    app: str
+    needs_processing: str
+    needs_audio: str
+
+
 class AnkiSettings(SettingsModel):
     url: str
     deck: str
     model: str
     fields: AnkiFields
+    tags: AnkiTags
 
 
 class Paths(SettingsModel):

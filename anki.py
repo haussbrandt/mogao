@@ -25,15 +25,15 @@ class Postprocessor:
         async with self.lock:
             call_anki("sync")
             processing_card_ids = call_anki(
-                "findCards", query="tag:needs-processing"
+                "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
             ).json()["result"]
             print(
                 f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for postprocessing: {len(processing_card_ids)}"
             )
 
-            audio_card_ids = call_anki("findCards", query="tag:needs-audio").json()[
-                "result"
-            ]
+            audio_card_ids = call_anki(
+                "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
+            ).json()["result"]
             print(
                 f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for audio: {len(audio_card_ids)}"
             )
@@ -57,7 +57,7 @@ class Postprocessor:
 
                 # Check if all cards got processed
                 processing_card_ids = call_anki(
-                    "findCards", query="tag:needs-processing"
+                    "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
                 ).json()["result"]
 
                 if processing_card_ids:
@@ -116,7 +116,7 @@ class Postprocessor:
                     call_anki(
                         "removeTags",
                         notes=[note_id],
-                        tags="needs-processing",
+                        tags=settings.anki.tags.needs_processing,
                     )
                     print(f"processed {note_id}")
                 except:
@@ -185,7 +185,7 @@ class Postprocessor:
                 call_anki(
                     "removeTags",
                     notes=[note_id],
-                    tags="needs-audio",
+                    tags=settings.anki.tags.needs_audio,
                 )
                 print(f"added audio to {note_id}")
                 if os.path.exists(f"/tmp/mogao/{source_word}.mp3"):

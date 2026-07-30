@@ -106,7 +106,12 @@ async def create_new_anki_card(data: NewCardRequest):
             settings.anki.fields.sentence: data.sentence,
             settings.anki.fields.meaning: data.definitions,
         },
-        "tags": ["mogao", "needs-processing", "needs-audio", f"mogao-{data.book_id}"],
+        "tags": [
+            settings.anki.tags.app,
+            settings.anki.tags.needs_processing,
+            settings.anki.tags.needs_audio,
+            f"{settings.anki.tags.app}-{data.book_id}",
+        ],
     }
     call_anki("addNote", note=note)
     asyncio.create_task(postprocessor.check_and_process())
@@ -127,7 +132,7 @@ async def library_view(request: Request):
                     continue
 
                 tagged_card_ids = call_anki(
-                    "findCards", query=f"tag:mogao-{item}"
+                    "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
                 ).json()["result"]
 
                 progress_path = get_progress_path(item)
