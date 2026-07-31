@@ -128,11 +128,6 @@ h1 {
   background-color: var(--accent-danger-hover);
 }
 
-.upload-btn:hover {
-  background-color: var(--accent-success);
-  transform: scale(1.1);
-}
-
 .book-cover {
   height: 260px;
   margin-bottom: 2px;

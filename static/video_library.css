@@ -130,11 +130,6 @@ h1 {
   background-color: var(--accent-danger-hover);
 }
 
-.upload-btn:hover {
-  background-color: var(--accent-success);
-  transform: scale(1.1);
-}
-
 .upload-btn.disabled {
   cursor: wait;
   opacity: 0.6;
