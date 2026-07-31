@@ -38,6 +38,16 @@ def get_video_progress_path(video_id: str) -> str:
     return os.path.join(settings.paths.video_library, safe_id, "progress.json")
 
 
+def save_video_progress(video_id: str, seconds_since_start: float = 0.0):
+    """Saves the current playback position to the video's progress file."""
+    try:
+        path = get_video_progress_path(video_id)
+        with open(path, "w") as f:
+            json.dump({"seconds_since_start": seconds_since_start}, f)
+    except Exception as e:
+        print(f"Error saving progress for {video_id}: {e}")
+
+
 def load_video_progress(video_id: str):
     """Loads the last watch progress from file."""
     # TODO: Create a class for this, so there is never a possible mismatch between save and load

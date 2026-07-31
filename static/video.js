@@ -6,6 +6,47 @@ const modeToggle = document.getElementById("subtitle-mode-toggle");
 const transcriptPanel = document.getElementById("transcript-panel");
 const transcriptLines = document.getElementById("transcript-lines");
 const deckWords = new Set(window.MOGAO_CONFIG.deckWords);
+const progressSaveInterval = 5000;
+let lastProgressSave = 0;
+
+function saveVideoProgress(keepalive = false) {
+  const secondsSinceStart = video.currentTime;
+  if (!Number.isFinite(secondsSinceStart)) return;
+
+  lastProgressSave = Date.now();
+  fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-progress`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      video_id: window.MOGAO_CONFIG.videoId,
+      seconds_since_start: secondsSinceStart,
+    }),
+    keepalive,
+  }).catch((error) => console.error("Failed to save video progress:", error));
+}
+
+function restoreVideoProgress() {
+  const savedTime = Number(window.MOGAO_CONFIG.initialPlaybackTime);
+  if (!Number.isFinite(savedTime) || savedTime <= 0) return;
+  video.currentTime = Number.isFinite(video.duration)
+    ? Math.min(savedTime, video.duration)
+    : savedTime;
+}
+
+if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+  restoreVideoProgress();
+} else {
+  video.addEventListener("loadedmetadata", restoreVideoProgress, { once: true });
+}
+
+video.addEventListener("timeupdate", () => {
+  if (Date.now() - lastProgressSave >= progressSaveInterval) {
+    saveVideoProgress();
+  }
+});
+video.addEventListener("pause", () => saveVideoProgress());
+video.addEventListener("seeked", () => saveVideoProgress());
+window.addEventListener("pagehide", () => saveVideoProgress(true));
 
 const bookContent = overlay; // FIXME: HACK to make textprocessor.js work
 window.MOGAO_CONFIG.bookId = window.MOGAO_CONFIG.videoID; // FIXME: Yet another hack

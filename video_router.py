@@ -23,7 +23,9 @@ from video import Video, cut_audio, generate_video, take_screenshot
 from video_library import (
     get_video_progress_path,
     load_video_cached,
+    load_video_progress,
     load_video_settings,
+    save_video_progress,
     save_video_settings,
 )
 
@@ -499,6 +501,17 @@ async def delete_video(video_id: UUID):
     return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
 
 
+class VideoProgressRequest(BaseModel):
+    video_id: UUID
+    seconds_since_start: float
+
+
+@router.post("/api/save-progress")
+async def save_video_progress_api(data: VideoProgressRequest):
+    save_video_progress(str(data.video_id), data.seconds_since_start)
+    return {"status": "ok"}
+
+
 @router.get("/watch/{video_id}", response_class=HTMLResponse)
 async def watch_video(request: Request, video_id: UUID):
     """The main video player interface."""
@@ -513,7 +526,9 @@ async def watch_video(request: Request, video_id: UUID):
     )
     has_subtitles = os.path.exists(subtitles_path)
 
-    # progress = load_video_progress(video_id)
+    progress = load_video_progress(safe_id)
+    seconds_since_start = progress.get("seconds_since_start", 0)
+    save_video_progress(safe_id, seconds_since_start)
 
     deck_words = get_all_words_from_anki_deck(
         settings.anki.deck, settings.anki.fields.word
@@ -526,6 +541,7 @@ async def watch_video(request: Request, video_id: UUID):
             "request": request,
             "video": video,
             "video_id": safe_id,
+            "initial_playback_time": seconds_since_start,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
             "video_base_path": video_base_path(),
