@@ -1,7 +1,6 @@
 import asyncio
 import os
 import shutil
-import uuid
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -35,6 +34,7 @@ from llm_processor import (
     resume_interrupted_processing,
 )
 from middleware import AuthMiddleware
+from temp_files import new_temp_path
 
 
 @asynccontextmanager
@@ -177,7 +177,7 @@ async def upload_book(files: list[UploadFile] = File(...)):
             raise HTTPException(status_code=400, detail="Only .epub files are allowed")
 
         # Save uploaded file temporarily
-        temp_filename = f"temp_{uuid.uuid4()}.epub"
+        temp_filename = new_temp_path(".epub")
         try:
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)

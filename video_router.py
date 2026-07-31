@@ -19,6 +19,7 @@ from config import settings
 from constants import normalize_uuid
 from dependencies import postprocessor, templates
 from llm_processor import load_video_dict, process_subtitles_background
+from temp_files import new_temp_path
 from video import Video, cut_audio, generate_video, take_screenshot
 from video_library import (
     get_video_progress_path,
@@ -186,7 +187,7 @@ async def upload_video(
     """
     for file in files:
         original_filename, extension = validate_video_filename(file.filename or "")
-        temp_filename = f"temp_{uuid.uuid4()}{extension}"
+        temp_filename = new_temp_path(extension)
         try:
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
@@ -336,7 +337,7 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
             status_code=400,
             detail=f"Only subtitle files are allowed: {ALLOWED_SUBTITLE_EXTENSIONS}",
         )
-    temp_filename = f"temp_{uuid.uuid4()}{extension}"
+    temp_filename = new_temp_path(extension)
     safe_id = normalize_uuid(video_id)
     output_dir = os.path.join(settings.paths.video_library, safe_id)
     if not os.path.exists(output_dir):
@@ -370,7 +371,7 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
 
 
 # TODO: refactor, move to correct file etc.
-def pick_best_subtitle(temp_filename: str) -> str | None:
+def pick_best_subtitle(temp_filename: str | os.PathLike[str]) -> str | None:
     base = os.path.splitext(temp_filename)[0]
     candidates = glob.glob(f"{base}.*.srt")
 
@@ -402,7 +403,7 @@ def pick_best_subtitle(temp_filename: str) -> str | None:
 
 # TODO: refactor
 async def download_and_process(url: str):
-    temp_filename = f"temp_{uuid.uuid4()}.mp4"
+    temp_filename = new_temp_path(".mp4")
     try:
         result = subprocess.run(
             [
