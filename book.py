@@ -1,18 +1,22 @@
 # This file is heavily inspired by https://github.com/karpathy/reader3/blob/master/reader3.py
 import os
 import pickle
+import posixpath
 import shutil
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 import ebooklib
 from bs4 import BeautifulSoup, Comment
 from ebooklib import epub
 
 from config import settings
+
+
+UNSAFE_LINK_SCHEMES = {"data", "javascript", "vbscript"}
 
 
 @dataclass
@@ -102,6 +106,65 @@ def extract_plain_text(soup: BeautifulSoup) -> str:
     text = soup.get_text(separator=" ")
     # Collapse whitespace
     return " ".join(text.split())
+
+
+def normalize_epub_path(path: str) -> str:
+    """Return a decoded, archive-relative EPUB path."""
+    return posixpath.normpath(unquote(path).lstrip("/"))
+
+
+def rewrite_internal_links(
+    soup: BeautifulSoup,
+    current_href: str,
+    book_id: uuid.UUID,
+    spine_indices: dict[str, int],
+) -> None:
+    """Rewrite EPUB document links to routes understood by the reader."""
+    current_path = normalize_epub_path(current_href)
+    current_directory = posixpath.dirname(current_path)
+
+    for link in soup.find_all("a", href=True):
+        original_href = link.get("href")
+        if not isinstance(original_href, str) or not original_href:
+            continue
+
+        try:
+            target = urlsplit(original_href)
+        except ValueError:
+            continue
+
+        scheme = target.scheme.lower()
+        if scheme in UNSAFE_LINK_SCHEMES:
+            del link["href"]
+            continue
+        if scheme or target.netloc:
+            continue
+
+        if target.path:
+            decoded_path = unquote(target.path)
+            if decoded_path.startswith("/"):
+                target_path = normalize_epub_path(decoded_path)
+            else:
+                target_path = normalize_epub_path(
+                    posixpath.join(current_directory, decoded_path)
+                )
+        else:
+            target_path = current_path
+
+        chapter_index = spine_indices.get(target_path)
+        if chapter_index is None:
+            continue
+
+        if target_path == current_path and target.fragment and not target.query:
+            link["href"] = f"#{target.fragment}"
+            continue
+
+        rewritten_href = f"/read/{book_id}/{chapter_index}"
+        if target.query:
+            rewritten_href += f"?{target.query}"
+        if target.fragment:
+            rewritten_href += f"#{target.fragment}"
+        link["href"] = rewritten_href
 
 
 def parse_toc_recursive(toc_list):
@@ -214,10 +277,15 @@ def generate_book(path, library_dir) -> Book:
 
     total_characters = 0
     spine_chapters = []
+    spine_indices: dict[str, int] = {}
+    for item_id, _ in ebook.spine:
+        item = ebook.get_item_with_id(item_id)
+        if item and item.get_type() == ebooklib.ITEM_DOCUMENT:
+            spine_indices[normalize_epub_path(item.get_name())] = len(spine_indices)
 
     # We iterate over the spine (linear reading order)
-    for i, spine_item in enumerate(ebook.spine):
-        item_id, linear = spine_item
+    for spine_item in ebook.spine:
+        item_id, _linear = spine_item
         item = ebook.get_item_with_id(item_id)
 
         if not item:
@@ -253,10 +321,18 @@ def generate_book(path, library_dir) -> Book:
                     else:
                         img["href"] = new_src
 
-            # B. Clean HTML
+            # B. Rewrite links between EPUB documents
+            rewrite_internal_links(
+                soup,
+                item.get_name(),
+                unique_key,
+                spine_indices,
+            )
+
+            # C. Clean HTML
             soup = clean_html_content(soup)
 
-            # C. Extract Body Content only
+            # D. Extract Body Content only
             body = soup.find("body")
             if body:
                 # Extract inner HTML of body
@@ -269,14 +345,16 @@ def generate_book(path, library_dir) -> Book:
                 1 for c in chapter_text if "\u4e00" <= c <= "\u9fff"
             )
             total_characters += chapter_characters
-            # D. Create Object
+            # E. Create Object
+            chapter_index = spine_indices[normalize_epub_path(item.get_name())]
             chapter = ChapterContent(
                 id=item_id,
                 href=item.get_name(),  # Important: This links TOC to Content
-                title=f"Section {i + 1}",  # Fallback, real titles come from TOC
+                # Fallback, real titles come from TOC
+                title=f"Section {chapter_index + 1}",
                 content=final_html,
                 text=extract_plain_text(soup),
-                order=i,
+                order=chapter_index,
                 chapter_characters=chapter_characters,
             )
             spine_chapters.append(chapter)
