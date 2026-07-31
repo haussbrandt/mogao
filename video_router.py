@@ -32,6 +32,7 @@ from video_library import (
 router = APIRouter(prefix="/video")
 
 ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm")
+ALLOWED_SUBTITLE_EXTENSIONS = (".srt",)
 CHUNK_UPLOAD_PATH = "video_uploads"
 CHUNK_SIZE = 50 * 1024 * 1024
 PROCESSING_JOB_RETENTION_SECONDS = 60 * 60
@@ -328,20 +329,19 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
     """
     Handles subtitles upload and processing.
     """
-    ALLOWED_VIDEO_EXTENSIONS = ".srt"
 
-    extension = os.path.splitext(file.filename)[1].lower()
-    if extension not in ALLOWED_VIDEO_EXTENSIONS:
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    if extension not in ALLOWED_SUBTITLE_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Only subtitle files are allowed: {ALLOWED_VIDEO_EXTENSIONS}",
+            detail=f"Only subtitle files are allowed: {ALLOWED_SUBTITLE_EXTENSIONS}",
         )
-    temp_filename = f"temp_{uuid.uuid4()}.{extension}"
+    temp_filename = f"temp_{uuid.uuid4()}{extension}"
     safe_id = normalize_uuid(video_id)
     output_dir = os.path.join(settings.paths.video_library, safe_id)
     if not os.path.exists(output_dir):
         print(f"Video not found")
-        raise HTTPException(status_code=500, detail="Failed to process subtitles")
+        raise HTTPException(status_code=404, detail="Video not found")
     try:
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
