@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import pickle
 from functools import lru_cache
@@ -7,6 +8,9 @@ from typing import Optional
 from book import Book
 from config import settings
 from constants import normalize_uuid
+
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=10)
@@ -27,8 +31,8 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
         with open(file_path, "rb") as f:
             book = pickle.load(f)
         return book
-    except Exception as e:
-        print(f"Error loading book {folder_name}: {e}")
+    except Exception:
+        logger.exception(f"Error loading book {folder_name}")
         return None
 
 
@@ -50,8 +54,8 @@ def save_progress(book_id: str, chapter_index: int, scroll_percentage: float = 0
                 },
                 f,
             )
-    except Exception as e:
-        print(f"Error saving progress for {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Error saving progress for book {book_id}")
 
 
 def load_progress(book_id: str):
@@ -63,8 +67,8 @@ def load_progress(book_id: str):
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"Error loading progress for {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Error loading progress for book {book_id}")
     return default_progress
 
 
@@ -78,8 +82,8 @@ def load_settings() -> dict:
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"Error loading settings: {e}")
+    except Exception:
+        logger.exception("Error loading book library settings")
     return {}
 
 
@@ -88,5 +92,5 @@ def save_settings(preferences: dict):
         path = get_settings_path()
         with open(path, "w") as f:
             json.dump(preferences, f)
-    except Exception as e:
-        print(f"Error saving settings: {e}")
+    except Exception:
+        logger.exception("Error saving book library settings")

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import shutil
 from contextlib import asynccontextmanager
@@ -6,7 +7,10 @@ from uuid import UUID
 
 from dotenv import load_dotenv
 
+from logging_config import configure_logging
+
 load_dotenv()
+configure_logging()
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
@@ -35,6 +39,9 @@ from llm_processor import (
 )
 from middleware import AuthMiddleware
 from temp_files import new_temp_path
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -188,8 +195,8 @@ async def upload_book(files: list[UploadFile] = File(...)):
             book_id = str(book.metadata.generate_key())
             asyncio.create_task(process_book_background(book_id, book))
 
-        except Exception as e:
-            print(f"Error processing book: {e}")
+        except Exception:
+            logger.exception("Error processing book")
             raise HTTPException(status_code=500, detail="Failed to process book")
         finally:
             # Cleanup temp file
@@ -211,8 +218,8 @@ async def delete_book(book_id: UUID):
         try:
             shutil.rmtree(book_path)
             load_book_cached.cache_clear()
-        except Exception as e:
-            print(f"Error deleting book {safe_id}: {e}")
+        except Exception:
+            logger.exception(f"Error deleting book {safe_id}")
             raise HTTPException(status_code=500, detail="Failed to delete book")
     else:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -296,4 +303,4 @@ async def serve_image(book_id: UUID, image_name: str):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8123)
+    uvicorn.run(app, host="0.0.0.0", port=8123, log_config=None)

@@ -1,6 +1,7 @@
 import asyncio
 import glob
 import json
+import logging
 import os
 import pickle
 import re
@@ -29,6 +30,8 @@ from video_library import (
     save_video_progress,
     save_video_settings,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/video")
 
@@ -117,11 +120,11 @@ def process_chunked_video(path: str, original_filename: str, upload_id: UUID):
             "complete",
             video_id=os.path.basename(output_dir),
         )
-    except Exception as e:
-        print(f"Error processing chunked video upload {upload_id}: {e}")
+    except Exception as error:
+        logger.exception(f"Error processing chunked video upload {upload_id}")
         if os.path.exists(path):
             os.remove(path)
-        write_processing_status(upload_id, "failed", detail=str(e))
+        write_processing_status(upload_id, "failed", detail=str(error))
 
 
 class NewCardFromVideoRequest(BaseModel):
@@ -191,8 +194,8 @@ async def upload_video(
         try:
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-        except Exception as e:
-            print(f"Error processing video: {e}")
+        except Exception:
+            logger.exception(f"Error saving uploaded video {original_filename}")
             raise HTTPException(status_code=500, detail="Failed to process video")
         background_tasks.add_task(generate_video, temp_filename, original_filename)
 
@@ -292,10 +295,10 @@ async def complete_chunk_upload(upload_id: UUID, background_tasks: BackgroundTas
         if os.path.exists(assembled_path):
             os.remove(assembled_path)
         raise
-    except Exception as e:
+    except Exception:
         if os.path.exists(assembled_path):
             os.remove(assembled_path)
-        print(f"Error assembling chunked video upload: {e}")
+        logger.exception(f"Error assembling chunked video upload {upload_id}")
         raise HTTPException(status_code=500, detail="Failed to assemble video upload")
 
     shutil.rmtree(upload_dir)
@@ -341,15 +344,15 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
     safe_id = normalize_uuid(video_id)
     output_dir = os.path.join(settings.paths.video_library, safe_id)
     if not os.path.exists(output_dir):
-        print(f"Video not found")
+        logger.warning(f"Cannot upload subtitles: video {safe_id} was not found")
         raise HTTPException(status_code=404, detail="Video not found")
     try:
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         shutil.move(temp_filename, f"{output_dir}/subtitles.srt")
-    except Exception as e:
-        print(f"Error processing subtitles: {e}")
+    except Exception:
+        logger.exception(f"Error processing subtitles for video {safe_id}")
         raise HTTPException(status_code=500, detail="Failed to process subtitles")
     finally:
         if os.path.exists(temp_filename):
@@ -429,10 +432,10 @@ async def download_and_process(url: str):
             check=True,
         )
         original_title = result.stdout.strip().splitlines()[0] + ".mp4"
-    except subprocess.CalledProcessError as e:
-        print(f"[Downloader] Failed to download video: {e.stderr}")
+    except subprocess.CalledProcessError as error:
+        logger.error(f"Failed to download video: {error.stderr}")
         raise HTTPException(
-            status_code=500, detail=f"Failed to download video: {e.stderr}"
+            status_code=500, detail=f"Failed to download video: {error.stderr}"
         )
     best_subitle_path = pick_best_subtitle(temp_filename)
     _, output_dir = generate_video(temp_filename, original_title)
@@ -493,8 +496,8 @@ async def delete_video(video_id: UUID):
         try:
             shutil.rmtree(video_path)
             load_video_cached.cache_clear()
-        except Exception as e:
-            print(f"Error deleting video {safe_id}: {e}")
+        except Exception:
+            logger.exception(f"Error deleting video {safe_id}")
             raise HTTPException(status_code=500, detail="Failed to delete video")
     else:
         raise HTTPException(status_code=404, detail="video not found")

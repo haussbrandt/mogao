@@ -1,12 +1,16 @@
 import base64
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import time
 import bcrypt
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+
+
+logger = logging.getLogger(__name__)
 
 COOKIE_NAME = "session"
 SESSION_SECRET = os.environ[
@@ -82,8 +86,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         samesite="strict",
                     )
                     return response
-            except Exception as e:
-                print(e)
+            except Exception:
+                logger.exception("Error while validating Basic Auth credentials")
 
         # 3. Nothing valid → challenge
         return Response(

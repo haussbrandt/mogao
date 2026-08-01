@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import pickle
 import re
@@ -12,6 +13,8 @@ from google.generativeai.types import RequestOptions
 
 from config import settings
 from constants import normalize_uuid
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE_CHARS = settings.dictionary_generation.chunk_size
 RATE_LIMIT_PER_MIN = settings.dictionary_generation.requests_per_minute
@@ -42,8 +45,8 @@ def load_book_dict(book_id: str) -> dict:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"[book_dict] Load error {book_id}: {e}")
+    except Exception:
+        logger.exception(f"Error loading dictionary for book {book_id}")
     return {"status": "none", "words": {}, "processed_chunks": 0, "total_chunks": 0}
 
 
@@ -65,8 +68,8 @@ def load_video_dict(video_id: str) -> dict:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"[video_dict] Load error {video_id}: {e}")
+    except Exception:
+        logger.exception(f"Error loading dictionary for video {video_id}")
     return {"status": "none", "words": {}, "processed_chunks": 0, "total_chunks": 0}
 
 
@@ -245,9 +248,9 @@ async def _call_llm(model, text: str) -> list[dict]:
     try:
         data = json.loads(response.text)
         return data.get("words", [])
-    except json.JSONDecodeError as e:
-        print(f"[LLM] JSON Error: {e}")
-        print("[LLM] Retrying with raw_decode")
+    except json.JSONDecodeError as error:
+        logger.warning(f"Could not decode LLM response as JSON: {error}")
+        logger.info("Retrying LLM response with raw_decode")
         data, _ = json.JSONDecoder().raw_decode(response.text.strip())
     return data.get("words", [])
 
@@ -268,7 +271,9 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
     """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print(f"[LLM] GEMINI_API_KEY not set — skipping book dict for {book_id}")
+        logger.warning(
+            f"GEMINI_API_KEY is not set; skipping dictionary for book {book_id}"
+        )
         return
 
     genai.configure(api_key=api_key)
@@ -300,19 +305,22 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         }
 
     _save_book_dict(book_id, state)
-    print(f"[LLM] {book_id}: {total} chunk(s), {len(completed_indices)} already done.")
+    logger.info(
+        f"Book {book_id}: {total} chunks, {len(completed_indices)} already complete"
+    )
 
     async def fetch_chunk(index: int, text: str):
         await _rate_limited_wait()
-        print(
-            f"[LLM] {book_id}: Sending chunk {index + 1}/{total} ({len(text):,} chars) to API..."
+        logger.info(
+            f"Book {book_id}: sending chunk {index + 1}/{total} "
+            f"({len(text):,} characters) to the API"
         )
         try:
             entries = await _call_llm(model, text)
             return index, entries, None
-        except Exception as e:
-            print(f"[LLM] {book_id}: Chunk {index + 1} permanently failed: {e}")
-            return index, [], e
+        except Exception as error:
+            logger.exception(f"Book {book_id}: chunk {index + 1} failed")
+            return index, [], error
 
     tasks = [
         asyncio.create_task(fetch_chunk(i, chunk))
@@ -324,8 +332,9 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         i, entries, error = await coro
 
         if error:
-            print(
-                f"[LLM] {book_id}: chunk {i + 1} permanently failed. Will retry on next server reboot."
+            logger.warning(
+                f"Book {book_id}: chunk {i + 1} will be retried after the next "
+                "server restart"
             )
             continue
 
@@ -349,19 +358,23 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         state["processed_chunks"] = len(completed_indices)
 
         _save_book_dict(book_id, state)
-        print(
-            f"[LLM] {book_id}: chunk {i + 1}/{total} done"
-            f" — {len(state['words'])} words so far"
+        logger.info(
+            f"Book {book_id}: chunk {i + 1}/{total} complete; "
+            f"{len(state['words'])} words so far"
         )
 
     if len(completed_indices) >= total:
         state["status"] = "done"
         state["completed_at"] = datetime.now().isoformat()
         _save_book_dict(book_id, state)
-        print(f"[LLM] {book_id}: complete — {len(state['words'])} LLM words extracted")
+        logger.info(
+            f"Book {book_id}: dictionary complete; "
+            f"{len(state['words'])} LLM words extracted"
+        )
     else:
-        print(
-            f"[LLM] {book_id}: paused with errors. {len(completed_indices)}/{total} chunks completed."
+        logger.warning(
+            f"Book {book_id}: dictionary paused with errors; "
+            f"{len(completed_indices)}/{total} chunks complete"
         )
 
 
@@ -380,7 +393,9 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
     """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print(f"[LLM] GEMINI_API_KEY not set — skipping subtitles dict for {video_id}")
+        logger.warning(
+            f"GEMINI_API_KEY is not set; skipping dictionary for video {video_id}"
+        )
         return
 
     genai.configure(api_key=api_key)
@@ -421,19 +436,22 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         }
 
     _save_video_dict(video_id, state)
-    print(f"[LLM] {video_id}: {total} chunk(s), {len(completed_indices)} already done.")
+    logger.info(
+        f"Video {video_id}: {total} chunks, {len(completed_indices)} already complete"
+    )
 
     async def fetch_chunk(index: int, text: str):
         await _rate_limited_wait()
-        print(
-            f"[LLM] {video_id}: Sending chunk {index + 1}/{total} ({len(text):,} chars) to API..."
+        logger.info(
+            f"Video {video_id}: sending chunk {index + 1}/{total} "
+            f"({len(text):,} characters) to the API"
         )
         try:
             entries = await _call_llm(model, text)
             return index, entries, None
-        except Exception as e:
-            print(f"[LLM] {video_id}: Chunk {index + 1} permanently failed: {e}")
-            return index, [], e
+        except Exception as error:
+            logger.exception(f"Video {video_id}: chunk {index + 1} failed")
+            return index, [], error
 
     tasks = [
         asyncio.create_task(fetch_chunk(i, chunk))
@@ -445,8 +463,9 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         i, entries, error = await coro
 
         if error:
-            print(
-                f"[LLM] {video_id}: chunk {i + 1} permanently failed. Will retry on next server reboot."
+            logger.warning(
+                f"Video {video_id}: chunk {i + 1} will be retried after the next "
+                "server restart"
             )
             continue
 
@@ -470,19 +489,23 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         state["processed_chunks"] = len(completed_indices)
 
         _save_video_dict(video_id, state)
-        print(
-            f"[LLM] {video_id}: chunk {i + 1}/{total} done"
-            f" — {len(state['words'])} words so far"
+        logger.info(
+            f"Video {video_id}: chunk {i + 1}/{total} complete; "
+            f"{len(state['words'])} words so far"
         )
 
     if len(completed_indices) >= total:
         state["status"] = "done"
         state["completed_at"] = datetime.now().isoformat()
         _save_video_dict(video_id, state)
-        print(f"[LLM] {video_id}: complete — {len(state['words'])} LLM words extracted")
+        logger.info(
+            f"Video {video_id}: dictionary complete; "
+            f"{len(state['words'])} LLM words extracted"
+        )
     else:
-        print(
-            f"[LLM] {video_id}: paused with errors. {len(completed_indices)}/{total} chunks completed."
+        logger.warning(
+            f"Video {video_id}: dictionary paused with errors; "
+            f"{len(completed_indices)}/{total} chunks complete"
         )
 
 
@@ -512,10 +535,10 @@ async def resume_interrupted_processing() -> None:
             try:
                 with open(pkl_path, "rb") as f:
                     book = pickle.load(f)
-                print(f"[LLM] Resuming interrupted processing for {book_id}")
+                logger.info(f"Resuming interrupted dictionary for book {book_id}")
                 asyncio.create_task(process_book_background(book_id, book, resume=True))
-            except Exception as e:
-                print(f"[LLM] Could not resume {book_id}: {e}")
+            except Exception:
+                logger.exception(f"Could not resume dictionary for book {book_id}")
     except FileNotFoundError:
         pass
     try:
@@ -531,9 +554,9 @@ async def resume_interrupted_processing() -> None:
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
             try:
-                print(f"[LLM] Resuming interrupted processing for {video_id}")
+                logger.info(f"Resuming interrupted dictionary for video {video_id}")
                 asyncio.create_task(process_subtitles_background(video_id, resume=True))
-            except Exception as e:
-                print(f"[LLM] Could not resume {video_id}: {e}")
+            except Exception:
+                logger.exception(f"Could not resume dictionary for video {video_id}")
     except FileNotFoundError:
         pass

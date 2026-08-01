@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import os
 import time
 from functools import lru_cache
@@ -10,6 +11,9 @@ import requests
 from elevenlabs.client import ElevenLabs
 
 from config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class Postprocessor:
@@ -27,20 +31,18 @@ class Postprocessor:
             processing_card_ids = call_anki(
                 "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
             ).json()["result"]
-            print(
-                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for postprocessing: {len(processing_card_ids)}"
+            logger.info(
+                f"Cards waiting for postprocessing: {len(processing_card_ids)}"
             )
 
             audio_card_ids = call_anki(
                 "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
             ).json()["result"]
-            print(
-                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards waiting for audio: {len(audio_card_ids)}"
-            )
+            logger.info(f"Cards waiting for audio: {len(audio_card_ids)}")
 
             current_time = time.time()
             if len(processing_card_ids) > 0 and self.timer_task is None:
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting a new timer")
+                logger.info("Starting a new postprocessing timer")
                 self.last_timer_reset = current_time
                 self.timer_task = asyncio.create_task(self.start_timer())
 
@@ -48,7 +50,7 @@ class Postprocessor:
             if len(processing_card_ids) >= self.batch_size or (
                 len(processing_card_ids) > 0 and time_since_last >= self.timeout
             ):
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting postprocessing")
+                logger.info("Starting card postprocessing")
                 await self.run_gemini_postprocessing(processing_card_ids)
 
                 self.last_timer_reset = current_time
@@ -61,15 +63,18 @@ class Postprocessor:
                 ).json()["result"]
 
                 if processing_card_ids:
-                    print(
-                        f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Cards still waiting for postprocessing: {len(processing_card_ids)}.\nStarting a new timer."
+                    logger.info(
+                        "Cards still waiting for postprocessing: "
+                        f"{len(processing_card_ids)}"
                     )
+                    logger.info("Starting a new postprocessing timer")
                     self.timer_task = asyncio.create_task(self.start_timer())
                 else:
                     self.timer_task = None
             else:
-                print(
-                    f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Not running postprocessing yet, {time_since_last=}"
+                logger.info(
+                    "Not running postprocessing yet; "
+                    f"{time_since_last:.1f} seconds since last run"
                 )
 
             # Add audio every time - it's not possible to batch it for lower usage
@@ -118,9 +123,9 @@ class Postprocessor:
                         notes=[note_id],
                         tags=settings.anki.tags.needs_processing,
                     )
-                    print(f"processed {note_id}")
-                except:
-                    pass
+                    logger.info(f"Processed Anki note {note_id}")
+                except Exception:
+                    logger.exception("Failed to postprocess an Anki note")
             call_anki("sync")
 
     @lru_cache(maxsize=20)
@@ -137,7 +142,7 @@ class Postprocessor:
                 note_id = card["note"]
                 source_text = card["fields"][settings.anki.fields.sentence]["value"]
                 source_word = card["fields"][settings.anki.fields.word]["value"]
-                print(f"adding audio to {note_id}")
+                logger.info(f"Adding audio to Anki note {note_id}")
                 sentence_clean = source_text.replace("<u>", "").replace("</u>", "")
                 response = self.call_elevenlabs_api(sentence_clean)
                 audio64 = response.audio_base_64
@@ -187,13 +192,15 @@ class Postprocessor:
                     notes=[note_id],
                     tags=settings.anki.tags.needs_audio,
                 )
-                print(f"added audio to {note_id}")
+                logger.info(f"Added audio to Anki note {note_id}")
                 if os.path.exists(f"/tmp/mogao/{source_word}.mp3"):
                     os.remove(f"/tmp/mogao/{source_word}.mp3")
                 if os.path.exists(f"/tmp/mogao/{note_id}.mp3"):
                     os.remove(f"/tmp/mogao/{note_id}.mp3")
-            except:
-                pass
+            except Exception:
+                logger.exception(
+                    f"Failed to add audio to Anki note {card.get('note', 'unknown')}"
+                )
 
         call_anki("sync")
 
@@ -238,8 +245,8 @@ def call_gemini_batch(api_key, batch_data):
 
         result_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
         return json.loads(result_text)
-    except Exception as e:
-        print(f"Gemini API Error: {e}")
+    except Exception:
+        logger.exception("Gemini API request failed")
         return []
 
 

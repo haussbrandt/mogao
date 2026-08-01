@@ -1,10 +1,16 @@
 # build_dictionary.py
 import glob
 import json
+import logging
 import os
 import re
 
 from config import settings
+from logging_config import configure_logging
+
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 CHINESE_DICT = {}
 CHINESE_FREQ = {}
@@ -50,10 +56,10 @@ def convert_pinyin_tone(pinyin_str):
 def load_dictionary():
     global CHINESE_DICT
     if not os.path.exists(settings.paths.dictionary):
-        print(f"Warning: {settings.paths.dictionary} not found.")
+        logger.warning(f"Dictionary file {settings.paths.dictionary} was not found")
         return
 
-    print("Loading dictionary...")
+    logger.info("Loading dictionary")
     pattern = re.compile(r"(\S+)\s+(\S+)\s+\[(.*?)\]\s+/(.*)/")
 
     with open(settings.paths.dictionary, "r", encoding="utf-8") as f:
@@ -86,11 +92,9 @@ def load_dictionary():
                         break
                 if not entry_exists:
                     CHINESE_DICT[simp].append(entry)
-    from pprint import pprint
-
-    pprint(CHINESE_DICT["黑"])
-    pprint(CHINESE_DICT["了"])
-    print(f"Dictionary loaded: {len(CHINESE_DICT)} entries.")
+    logger.debug(f"Sample dictionary entry for 黑: {CHINESE_DICT.get('黑')}")
+    logger.debug(f"Sample dictionary entry for 了: {CHINESE_DICT.get('了')}")
+    logger.info(f"Dictionary loaded: {len(CHINESE_DICT)} entries")
 
 
 def load_frequency():
@@ -100,10 +104,12 @@ def load_frequency():
     """
     global CHINESE_FREQ
     if not os.path.exists(settings.paths.frequencies):
-        print(f"Warning: {settings.paths.frequencies} directory not found.")
+        logger.warning(
+            f"Frequency directory {settings.paths.frequencies} was not found"
+        )
         return
 
-    print("Loading frequency data (this might take a moment)...")
+    logger.info("Loading frequency data (this might take a moment)")
 
     temp_scores = {}  # word -> [score1, score2, ...]
 
@@ -113,7 +119,9 @@ def load_frequency():
     )
 
     if not files:
-        print("No frequency JSON files found in freqs/ folder.")
+        logger.warning(
+            f"No frequency JSON files found in {settings.paths.frequencies}"
+        )
         return
 
     for file_path in files:
@@ -130,8 +138,8 @@ def load_frequency():
                         if term not in temp_scores:
                             temp_scores[term] = []
                         temp_scores[term].append(val)
-        except Exception as e:
-            print(f"Error reading {file_path}: {e}")
+        except Exception:
+            logger.exception(f"Error reading frequency file {file_path}")
 
     # Calculate Harmonic Mean
     count = 0
@@ -145,11 +153,11 @@ def load_frequency():
         except Exception:
             pass
 
-    print(f"Frequency data loaded: {count} unique terms.")
+    logger.info(f"Frequency data loaded: {count} unique terms")
 
 
 def build():
-    print("Merging dictionary and frequency data...")
+    logger.info("Merging dictionary and frequency data")
     output = {}
 
     # server.CHINESE_DICT is already loaded by importing server
@@ -163,8 +171,8 @@ def build():
 
         output[word] = {"e": compact_entries, "f": freq}
 
-    print(f"Total words: {len(output)}")
-    print("Saving to static/dict.json...")
+    logger.info(f"Total words: {len(output)}")
+    logger.info("Saving dictionary to static/dict.json")
 
     # Ensure static dir exists
     os.makedirs("static", exist_ok=True)
@@ -173,7 +181,7 @@ def build():
         # separators=(',', ':') removes whitespace to minimize size
         json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
 
-    print("Done! You can now restart the server.")
+    logger.info("Dictionary build complete; you can now restart the server")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import pickle
 from functools import lru_cache
@@ -7,6 +8,9 @@ from typing import Optional
 from config import settings
 from constants import normalize_uuid
 from video import Video
+
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=10)
@@ -27,8 +31,8 @@ def load_video_cached(folder_name: str) -> Optional[Video]:
         with open(file_path, "rb") as f:
             video = pickle.load(f)
         return video
-    except Exception as e:
-        print(f"Error loading video {folder_name}: {e}")
+    except Exception:
+        logger.exception(f"Error loading video {folder_name}")
         return None
 
 
@@ -44,8 +48,8 @@ def save_video_progress(video_id: str, seconds_since_start: float = 0.0):
         path = get_video_progress_path(video_id)
         with open(path, "w") as f:
             json.dump({"seconds_since_start": seconds_since_start}, f)
-    except Exception as e:
-        print(f"Error saving progress for {video_id}: {e}")
+    except Exception:
+        logger.exception(f"Error saving progress for video {video_id}")
 
 
 def load_video_progress(video_id: str):
@@ -57,8 +61,8 @@ def load_video_progress(video_id: str):
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"Error loading progress for {video_id}: {e}")
+    except Exception:
+        logger.exception(f"Error loading progress for video {video_id}")
     return default_progress
 
 
@@ -72,8 +76,8 @@ def load_video_settings() -> dict:
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
-    except Exception as e:
-        print(f"Error loading settings: {e}")
+    except Exception:
+        logger.exception("Error loading video library settings")
     return {}
 
 
@@ -82,5 +86,5 @@ def save_video_settings(preferences: dict):
         path = get_video_settings_path()
         with open(path, "w") as f:
             json.dump(preferences, f)
-    except Exception as e:
-        print(f"Error saving settings: {e}")
+    except Exception:
+        logger.exception("Error saving video library settings")
