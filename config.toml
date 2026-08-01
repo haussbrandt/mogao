@@ -32,6 +32,6 @@ timeout = 3600
 voice_id = "nhhJXuFAYDroPyaJSlVA"
 
 [dictionary_generation]
-llm = "gemma-4-31b-it"
+llm = "gemini-3.5-flash-lite"
 chunk_size = 20000
 requests_per_minute = 14
