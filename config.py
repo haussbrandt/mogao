@@ -1,7 +1,13 @@
 import tomllib
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    PositiveInt,
+    field_validator,
+    model_validator,
+)
 
 CONFIG_PATH = Path(__file__).with_name("config.toml")
 
@@ -32,6 +38,7 @@ class AnkiTags(SettingsModel):
 
 
 class AnkiSettings(SettingsModel):
+    enabled: bool
     url: str
     deck: str
     model: str
@@ -53,17 +60,28 @@ class Paths(SettingsModel):
         return CONFIG_PATH.parent / value
 
 
-class Postprocessing(SettingsModel):
+class PostprocessingText(SettingsModel):
+    enabled: bool
     llm: str
-    batch_size: int
-    timeout: int
+    batch_size: PositiveInt
+    timeout: PositiveInt
+
+
+class PostprocessingAudio(SettingsModel):
+    enabled: bool
     voice_id: str
 
 
+class Postprocessing(SettingsModel):
+    text: PostprocessingText
+    audio: PostprocessingAudio
+
+
 class DictionaryGeneration(SettingsModel):
+    enabled: bool
     llm: str
-    chunk_size: int
-    requests_per_minute: int
+    chunk_size: PositiveInt
+    requests_per_minute: PositiveInt
 
 
 class AppSettings(SettingsModel):
@@ -71,6 +89,21 @@ class AppSettings(SettingsModel):
     paths: Paths
     postprocessing: Postprocessing
     dictionary_generation: DictionaryGeneration
+
+    @model_validator(mode="after")
+    def validate_postprocessing_requires_anki(self):
+        enabled_postprocessing = []
+        if self.postprocessing.text.enabled:
+            enabled_postprocessing.append("postprocessing.text")
+        if self.postprocessing.audio.enabled:
+            enabled_postprocessing.append("postprocessing.audio")
+
+        if enabled_postprocessing and not self.anki.enabled:
+            enabled_sections = ", ".join(enabled_postprocessing)
+            raise ValueError(
+                f"{enabled_sections} cannot be enabled when anki.enabled is false"
+            )
+        return self
 
 
 def load_settings() -> AppSettings:

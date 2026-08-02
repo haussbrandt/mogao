@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import video_router
-from anki import call_anki, get_all_words_from_anki_deck
+from anki import call_anki, ensure_anki_available, get_all_words_from_anki_deck
 from book import generate_book
 from config import settings
 from constants import normalize_uuid
@@ -44,10 +44,38 @@ from temp_files import new_temp_path
 logger = logging.getLogger(__name__)
 
 
+def validate_runtime_requirements() -> None:
+    missing_keys = []
+    if settings.postprocessing.text.enabled and not os.environ.get(
+        "GEMINI_API_KEY", ""
+    ).strip():
+        missing_keys.append("GEMINI_API_KEY for postprocessing.text")
+    if settings.postprocessing.audio.enabled and not os.environ.get(
+        "ELEVENLABS_API_KEY", ""
+    ).strip():
+        missing_keys.append("ELEVENLABS_API_KEY for postprocessing.audio")
+
+    if missing_keys:
+        raise RuntimeError(
+            "Missing required API configuration: " + ", ".join(missing_keys)
+        )
+
+    if settings.anki.enabled:
+        ensure_anki_available()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    asyncio.create_task(postprocessor.check_and_process())
-    asyncio.create_task(resume_interrupted_processing())
+    validate_runtime_requirements()
+    if settings.postprocessing.audio.enabled:
+        postprocessor.initialize_clients()
+    if (
+        settings.postprocessing.text.enabled
+        or settings.postprocessing.audio.enabled
+    ):
+        asyncio.create_task(postprocessor.check_and_process())
+    if settings.dictionary_generation.enabled:
+        asyncio.create_task(resume_interrupted_processing())
     asyncio.create_task(video_router.cleanup_processing_jobs())
     yield
 
@@ -104,6 +132,15 @@ class NewCardRequest(BaseModel):
 
 @app.post("/api/new-card")
 async def create_new_anki_card(data: NewCardRequest):
+    if not settings.anki.enabled:
+        raise HTTPException(status_code=503, detail="Anki integration is disabled")
+
+    tags = [settings.anki.tags.app, f"{settings.anki.tags.app}-{data.book_id}"]
+    if settings.postprocessing.text.enabled:
+        tags.append(settings.anki.tags.needs_processing)
+    if settings.postprocessing.audio.enabled:
+        tags.append(settings.anki.tags.needs_audio)
+
     note = {
         "deckName": settings.anki.deck,
         "modelName": settings.anki.model,
@@ -113,15 +150,14 @@ async def create_new_anki_card(data: NewCardRequest):
             settings.anki.fields.sentence: data.sentence,
             settings.anki.fields.meaning: data.definitions,
         },
-        "tags": [
-            settings.anki.tags.app,
-            settings.anki.tags.needs_processing,
-            settings.anki.tags.needs_audio,
-            f"{settings.anki.tags.app}-{data.book_id}",
-        ],
+        "tags": tags,
     }
     call_anki("addNote", note=note)
-    asyncio.create_task(postprocessor.check_and_process())
+    if (
+        settings.postprocessing.text.enabled
+        or settings.postprocessing.audio.enabled
+    ):
+        asyncio.create_task(postprocessor.check_and_process())
     call_anki("sync")
     return {"status": "ok"}
 
@@ -138,9 +174,11 @@ async def library_view(request: Request):
                 if not book:
                     continue
 
-                tagged_card_ids = call_anki(
-                    "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
-                ).json()["result"]
+                tagged_card_ids = []
+                if settings.anki.enabled:
+                    tagged_card_ids = call_anki(
+                        "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
+                    ).json()["result"]
 
                 progress_path = get_progress_path(item)
                 last_read_time = (
@@ -193,7 +231,8 @@ async def upload_book(files: list[UploadFile] = File(...)):
             load_book_cached.cache_clear()
 
             book_id = str(book.metadata.generate_key())
-            asyncio.create_task(process_book_background(book_id, book))
+            if settings.dictionary_generation.enabled:
+                asyncio.create_task(process_book_background(book_id, book))
 
         except Exception:
             logger.exception("Error processing book")
@@ -259,9 +298,11 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     # Calculate Prev/Next links
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
-    deck_words = get_all_words_from_anki_deck(
-        settings.anki.deck, settings.anki.fields.word
-    )
+    deck_words = set()
+    if settings.anki.enabled:
+        deck_words = get_all_words_from_anki_deck(
+            settings.anki.deck, settings.anki.fields.word
+        )
 
     return templates.TemplateResponse(
         request,
@@ -276,6 +317,7 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
             "next_idx": next_idx,
             "initial_scroll_percentage": initial_scroll_percentage,
             "deck_words": list(deck_words),
+            "anki_enabled": settings.anki.enabled,
         },
     )
 

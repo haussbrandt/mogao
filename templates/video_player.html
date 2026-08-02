@@ -84,16 +84,19 @@
   <!-- prettier-ignore -->
   <script>
     window.MOGAO_CONFIG = {
-		videoId: "{{ video_id }}",
-		videoBasePath: "{{ video_base_path }}",
-		initialPlaybackTime: {{ initial_playback_time | tojson }},
-		hasSubtitles: {{ has_subtitles | tojson }},
-		deckWords: {{ deck_words | tojson }},
+      videoId: "{{ video_id }}",
+      videoBasePath: "{{ video_base_path }}",
+      initialPlaybackTime: {{ initial_playback_time | tojson }},
+      hasSubtitles: {{ has_subtitles | tojson }},
+      ankiEnabled: {{ anki_enabled | tojson }},
+      deckWords: {{ deck_words | tojson }},
     };
   </script>
 
   <script src="{{ url_for('static', path='textprocessor.js') }}"></script>
-  <script src="{{ url_for('static', path='anki.js') }}?v=3"></script>
+  {% if anki_enabled %}
+    <script src="{{ url_for('static', path='anki.js') }}?v=3"></script>
+  {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}"></script>
   <script src="{{ url_for('static', path='dictionary.js?v=3') }}"></script>
   <script src="{{ url_for('static', path='video_dict.js') }}"></script>

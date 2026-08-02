@@ -1,4 +1,5 @@
 [anki]
+enabled = true
 url = "http://localhost:8765"
 deck = "Mandarin Sentence Mining"
 model = "Mandarin Sentence Mining"
@@ -25,13 +26,18 @@ video_library = "video_library"
 dictionary = "dicts/cedict_ts.u8"
 frequencies = "dicts/freqs"
 
-[postprocessing]
+[postprocessing.text]
+enabled = true
 llm = "gemini-flash-latest"
 batch_size = 5
 timeout = 3600
+
+[postprocessing.audio]
+enabled = true
 voice_id = "nhhJXuFAYDroPyaJSlVA"
 
 [dictionary_generation]
+enabled = true
 llm = "gemini-3.5-flash-lite"
 chunk_size = 20000
 requests_per_minute = 14

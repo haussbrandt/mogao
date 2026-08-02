@@ -146,15 +146,18 @@ bookContent.addEventListener("click", async function (e) {
         const encodedDefinitions = btoa(
           unescape(encodeURIComponent(definitionsHTML)),
         );
-        let ankiBtn = `<button 
-			class="anki-btn" 
-			${deckWords.has(item.word) ? "disabled" : ""} 
-			data-word="${item.word}" 
-			data-pinyin="${entry.pinyin}"
-			data-defs="${encodedDefinitions}"
-			onclick="addToAnki(this, '${window.MOGAO_CONFIG.bookId}')">
-			${deckWords.has(item.word) ? "✓" : "+"}
-			</button>`;
+        let ankiBtn = "";
+        if (window.MOGAO_CONFIG.ankiEnabled) {
+          ankiBtn = `<button
+            class="anki-btn"
+            ${deckWords.has(item.word) ? "disabled" : ""}
+            data-word="${item.word}"
+            data-pinyin="${entry.pinyin}"
+            data-defs="${encodedDefinitions}"
+            onclick="addToAnki(this, '${window.MOGAO_CONFIG.bookId}')">
+            ${deckWords.has(item.word) ? "✓" : "+"}
+          </button>`;
+        }
         html += `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
         let defsHtml = entry.definitions.map((d) => `<li>${d}</li>`).join("");
         html += `<div class="entry-block"><div class="entry-pinyin">${entry.pinyin}</div><ul class="entry-defs">${defsHtml}</ul></div>`;

@@ -342,15 +342,18 @@ function lookupSubtitle(e) {
         const stringifiedSubsSegment = JSON.stringify(
           segmentedSubs[selectedSubIndex],
         ).replace(/"/g, "&quot;");
-        const ankiBtn = `<button class="anki-btn"
-              ${deckWords.has(item.word) ? "disabled" : ""}
-              data-word="${item.word}"
-              data-pinyin="${entry.pinyin}"
-              data-defs="${encodedDefs}"
-			  data-segmentedsubs="${stringifiedSubsSegment}"
-              onclick="addToAnkiFromVideo(this, '${window.MOGAO_CONFIG.videoId}')">
-              ${deckWords.has(item.word) ? "✓" : "+"}
-            </button>`;
+        let ankiBtn = "";
+        if (window.MOGAO_CONFIG.ankiEnabled) {
+          ankiBtn = `<button class="anki-btn"
+            ${deckWords.has(item.word) ? "disabled" : ""}
+            data-word="${item.word}"
+            data-pinyin="${entry.pinyin}"
+            data-defs="${encodedDefs}"
+            data-segmentedsubs="${stringifiedSubsSegment}"
+            onclick="addToAnkiFromVideo(this, '${window.MOGAO_CONFIG.videoId}')">
+            ${deckWords.has(item.word) ? "✓" : "+"}
+          </button>`;
+        }
         html += `<div class="result-head">
               <span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}
             </div>

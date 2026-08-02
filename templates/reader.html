@@ -113,23 +113,26 @@
 
     <!-- prettier-ignore -->
     <script>
-		window.MOGAO_CONFIG = {
-			bookId: "{{ book_id }}",
-			chapterIndex: {{ chapter_index }},
-			initialScroll: {{ initial_scroll_percentage }},
-			deckWords: {{ deck_words | tojson }},
-			spineMap: {
-			  {% for ch in book.spine %}
-			  "{{ ch.href }}": {{ ch.order }},
-			  {% endfor %}
-			},
-			chapter_lengths: {{ book.spine | map(attribute='chapter_characters') | list | tojson }}
-		 };
-	</script>
+      window.MOGAO_CONFIG = {
+        bookId: "{{ book_id }}",
+        chapterIndex: {{ chapter_index }},
+        initialScroll: {{ initial_scroll_percentage }},
+        ankiEnabled: {{ anki_enabled | tojson }},
+        deckWords: {{ deck_words | tojson }},
+        spineMap: {
+          {% for ch in book.spine %}
+          "{{ ch.href }}": {{ ch.order }},
+          {% endfor %}
+        },
+        chapter_lengths: {{ book.spine | map(attribute='chapter_characters') | list | tojson }}
+      };
+    </script>
     <script src="{{ url_for('static', path='navigation.js') }}"></script>
     <script src="{{ url_for('static', path='progress.js') }}?v=2"></script>
     <script src="{{ url_for('static', path='textprocessor.js') }}"></script>
-    <script src="{{ url_for('static', path='anki.js') }}?v=2"></script>
+    {% if anki_enabled %}
+      <script src="{{ url_for('static', path='anki.js') }}?v=2"></script>
+    {% endif %}
     <script src="{{ url_for('static', path='stats.js') }}"></script>
     <script src="{{ url_for('static', path='segmenter.js') }}"></script>
     <script src="{{ url_for('static', path='dictionary.js?v=3') }}"></script>

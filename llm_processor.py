@@ -269,6 +269,9 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         resume:   if True, skip chunks already counted in processed_chunks
                   (used on server restart to recover interrupted jobs)
     """
+    if not settings.dictionary_generation.enabled:
+        return
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.warning(
@@ -391,6 +394,9 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         resume:    if True, skip chunks already counted in processed_chunks
                    (used on server restart to recover interrupted jobs)
     """
+    if not settings.dictionary_generation.enabled:
+        return
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         logger.warning(
@@ -516,6 +522,9 @@ async def resume_interrupted_processing() -> None:
     server was shut down mid-run) and resumes them as background tasks.
     Also does the same for video folders and subtitles_dict.json files.
     """
+    if not settings.dictionary_generation.enabled:
+        return
+
     # TODO: Refactor
     try:
         for book_id in os.listdir(settings.paths.library):

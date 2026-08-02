@@ -139,9 +139,16 @@ class NewCardFromVideoRequest(BaseModel):
 
 @router.post("/api/new-card-from-video")
 async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
+    if not settings.anki.enabled:
+        raise HTTPException(status_code=503, detail="Anki integration is disabled")
+
     video_id = normalize_uuid(data.book_id)
     audio_path = cut_audio(video_id, data.start, data.end)
     screenshot_path = take_screenshot(video_id, data.start)
+    tags = [settings.anki.tags.app, f"{settings.anki.tags.app}-{video_id}"]
+    if settings.postprocessing.text.enabled:
+        tags.append(settings.anki.tags.needs_processing)
+
     note = {
         "deckName": settings.anki.deck,
         "modelName": settings.anki.model,
@@ -165,14 +172,11 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
                 "fields": [settings.anki.fields.sentence_image],
             }
         ],
-        "tags": [
-            settings.anki.tags.app,
-            settings.anki.tags.needs_processing,
-            f"{settings.anki.tags.app}-{video_id}",
-        ],
+        "tags": tags,
     }
     call_anki("addNote", note=note)
-    asyncio.create_task(postprocessor.check_and_process())
+    if settings.postprocessing.text.enabled:
+        asyncio.create_task(postprocessor.check_and_process())
     call_anki("sync")
     os.remove(audio_path)
     os.remove(screenshot_path)
@@ -368,7 +372,8 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
         pickle.dump(video_pickle, v)
     load_video_cached.cache_clear()
 
-    asyncio.create_task(process_subtitles_background(safe_id))
+    if settings.dictionary_generation.enabled:
+        asyncio.create_task(process_subtitles_background(safe_id))
 
     return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
 
@@ -453,7 +458,10 @@ async def download_and_process(url: str):
             pickle.dump(video_pickle, v)
         load_video_cached.cache_clear()
 
-        asyncio.create_task(process_subtitles_background(os.path.basename(output_dir)))
+        if settings.dictionary_generation.enabled:
+            asyncio.create_task(
+                process_subtitles_background(os.path.basename(output_dir))
+            )
 
 
 class DownloadRequest(BaseModel):
@@ -534,9 +542,11 @@ async def watch_video(request: Request, video_id: UUID):
     seconds_since_start = progress.get("seconds_since_start", 0)
     save_video_progress(safe_id, seconds_since_start)
 
-    deck_words = get_all_words_from_anki_deck(
-        settings.anki.deck, settings.anki.fields.word
-    )
+    deck_words = set()
+    if settings.anki.enabled:
+        deck_words = get_all_words_from_anki_deck(
+            settings.anki.deck, settings.anki.fields.word
+        )
 
     return templates.TemplateResponse(
         request,
@@ -548,6 +558,7 @@ async def watch_video(request: Request, video_id: UUID):
             "initial_playback_time": seconds_since_start,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
+            "anki_enabled": settings.anki.enabled,
             "video_base_path": video_base_path(),
         },
     )
@@ -606,9 +617,11 @@ async def video_library_view(request: Request):
                 if not video:
                     continue
 
-                tagged_card_ids = call_anki(
-                    "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
-                ).json()["result"]
+                tagged_card_ids = []
+                if settings.anki.enabled:
+                    tagged_card_ids = call_anki(
+                        "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
+                    ).json()["result"]
 
                 progress_path = get_video_progress_path(item)
                 last_watch_time = (

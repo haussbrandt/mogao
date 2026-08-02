@@ -12,73 +12,79 @@ from elevenlabs.client import ElevenLabs
 
 from config import settings
 
-
 logger = logging.getLogger(__name__)
+
+ANKI_REQUEST_TIMEOUT_SECONDS = 5
 
 
 class Postprocessor:
     def __init__(self) -> None:
-        self.batch_size = settings.postprocessing.batch_size
-        self.timeout = settings.postprocessing.timeout
+        self.batch_size = settings.postprocessing.text.batch_size
+        self.timeout = settings.postprocessing.text.timeout
         self.last_timer_reset = time.time()
         self.lock = asyncio.Lock()
         self.timer_task = None
-        self.eleven_client = ElevenLabs(api_key=os.environ.get("ELEVENLABS_API_KEY"))
+        self.eleven_client = None
+
+    def initialize_clients(self) -> None:
+        if settings.postprocessing.audio.enabled:
+            self.eleven_client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
 
     async def check_and_process(self):
         async with self.lock:
             call_anki("sync")
-            processing_card_ids = call_anki(
-                "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
-            ).json()["result"]
-            logger.info(
-                f"Cards waiting for postprocessing: {len(processing_card_ids)}"
-            )
-
-            audio_card_ids = call_anki(
-                "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
-            ).json()["result"]
-            logger.info(f"Cards waiting for audio: {len(audio_card_ids)}")
-
-            current_time = time.time()
-            if len(processing_card_ids) > 0 and self.timer_task is None:
-                logger.info("Starting a new postprocessing timer")
-                self.last_timer_reset = current_time
-                self.timer_task = asyncio.create_task(self.start_timer())
-
-            time_since_last = current_time - self.last_timer_reset
-            if len(processing_card_ids) >= self.batch_size or (
-                len(processing_card_ids) > 0 and time_since_last >= self.timeout
-            ):
-                logger.info("Starting card postprocessing")
-                await self.run_gemini_postprocessing(processing_card_ids)
-
-                self.last_timer_reset = current_time
-                if self.timer_task:
-                    self.timer_task.cancel()
-
-                # Check if all cards got processed
+            if settings.postprocessing.text.enabled:
                 processing_card_ids = call_anki(
                     "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
                 ).json()["result"]
-
-                if processing_card_ids:
-                    logger.info(
-                        "Cards still waiting for postprocessing: "
-                        f"{len(processing_card_ids)}"
-                    )
-                    logger.info("Starting a new postprocessing timer")
-                    self.timer_task = asyncio.create_task(self.start_timer())
-                else:
-                    self.timer_task = None
-            else:
                 logger.info(
-                    "Not running postprocessing yet; "
-                    f"{time_since_last:.1f} seconds since last run"
+                    f"Cards waiting for postprocessing: {len(processing_card_ids)}"
                 )
 
-            # Add audio every time - it's not possible to batch it for lower usage
-            await self.run_audio_postprocessing(audio_card_ids)
+                current_time = time.time()
+                if len(processing_card_ids) > 0 and self.timer_task is None:
+                    logger.info("Starting a new postprocessing timer")
+                    self.last_timer_reset = current_time
+                    self.timer_task = asyncio.create_task(self.start_timer())
+
+                time_since_last = current_time - self.last_timer_reset
+                if len(processing_card_ids) >= self.batch_size or (
+                    len(processing_card_ids) > 0 and time_since_last >= self.timeout
+                ):
+                    logger.info("Starting card postprocessing")
+                    await self.run_gemini_postprocessing(processing_card_ids)
+
+                    self.last_timer_reset = current_time
+                    if self.timer_task:
+                        self.timer_task.cancel()
+
+                    processing_card_ids = call_anki(
+                        "findCards",
+                        query=f"tag:{settings.anki.tags.needs_processing}",
+                    ).json()["result"]
+
+                    if processing_card_ids:
+                        logger.info(
+                            "Cards still waiting for postprocessing: "
+                            f"{len(processing_card_ids)}"
+                        )
+                        logger.info("Starting a new postprocessing timer")
+                        self.timer_task = asyncio.create_task(self.start_timer())
+                    else:
+                        self.timer_task = None
+                else:
+                    logger.info(
+                        "Not running postprocessing yet; "
+                        f"{time_since_last:.1f} seconds since last run"
+                    )
+
+            if settings.postprocessing.audio.enabled:
+                audio_card_ids = call_anki(
+                    "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
+                ).json()["result"]
+                logger.info(f"Cards waiting for audio: {len(audio_card_ids)}")
+
+                await self.run_audio_postprocessing(audio_card_ids)
 
     async def start_timer(self):
         try:
@@ -130,8 +136,10 @@ class Postprocessor:
 
     @lru_cache(maxsize=20)
     def call_elevenlabs_api(self, sentence_clean):
+        if self.eleven_client is None:
+            raise RuntimeError("ElevenLabs client has not been initialized")
         response = self.eleven_client.text_to_speech.convert_with_timestamps(
-            voice_id=settings.postprocessing.voice_id, text=sentence_clean
+            voice_id=settings.postprocessing.audio.voice_id, text=sentence_clean
         )
         return response
 
@@ -206,7 +214,7 @@ class Postprocessor:
 
 
 def call_gemini_batch(api_key, batch_data):
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.postprocessing.llm}:generateContent?key={api_key}"
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.postprocessing.text.llm}:generateContent?key={api_key}"
 
     # TODO: This prompt is kind of dumb, but it works
     prompt_template = 'You are an expert Chinese language tutor. Analyze the following sentence and provide its English meaning, pinyin transcription and underline each occurence of the word using <u> and </u>. The sentence is: "{source_text}"\nThe word is "{source_word}"'
@@ -250,10 +258,36 @@ def call_gemini_batch(api_key, batch_data):
         return []
 
 
-def call_anki(action, **params):
+def call_anki(action, *, request_timeout=None, **params):
     return requests.post(
-        settings.anki.url, json={"action": action, "params": params, "version": 6}
+        settings.anki.url,
+        json={"action": action, "params": params, "version": 6},
+        timeout=request_timeout,
     )
+
+
+def ensure_anki_available() -> None:
+    try:
+        response = call_anki("version", request_timeout=ANKI_REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as error:
+        raise RuntimeError(
+            "Anki is enabled, but AnkiConnect is not available at "
+            f"{settings.anki.url}. Start Anki with AnkiConnect installed or disable "
+            "Anki in config.toml."
+        ) from error
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            "Anki is enabled, but AnkiConnect returned an invalid response"
+        )
+
+    if payload.get("error") is not None or payload.get("result") is None:
+        raise RuntimeError(
+            "Anki is enabled, but AnkiConnect returned an invalid response: "
+            f"{payload.get('error') or payload!r}"
+        )
 
 
 def get_all_words_from_anki_deck(deck_name: str, field_name: str) -> set[str]:
