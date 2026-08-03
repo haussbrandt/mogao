@@ -1,5 +1,5 @@
 [anki]
-enabled = true
+enabled = false
 url = "http://localhost:8765"
 deck = "Mandarin Sentence Mining"
 model = "Mandarin Sentence Mining"
@@ -27,17 +27,17 @@ dictionary = "dicts/cedict_ts.u8"
 frequencies = "dicts/freqs"
 
 [postprocessing.text]
-enabled = true
+enabled = false
 llm = "gemini-flash-latest"
 batch_size = 5
 timeout = 3600
 
 [postprocessing.audio]
-enabled = true
+enabled = false
 voice_id = "nhhJXuFAYDroPyaJSlVA"
 
 [dictionary_generation]
-enabled = true
+enabled = false
 llm = "gemini-3.5-flash-lite"
 chunk_size = 20000
 requests_per_minute = 14

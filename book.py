@@ -6,17 +6,129 @@ import shutil
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
 
 import ebooklib
-from bs4 import BeautifulSoup, Comment
+import nh3
+from bs4 import BeautifulSoup
 from ebooklib import epub
 
 from config import settings
 
-
 UNSAFE_LINK_SCHEMES = {"data", "javascript", "vbscript"}
+
+ALLOWED_EPUB_TAGS = {
+    "a",
+    "b",
+    "blockquote",
+    "br",
+    "code",
+    "div",
+    "em",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "ol",
+    "p",
+    "pre",
+    "rp",
+    "rt",
+    "ruby",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "tr",
+    "u",
+    "ul",
+}
+
+DISCARDED_EPUB_TAGS = {
+    "audio",
+    "button",
+    "canvas",
+    "embed",
+    "form",
+    "iframe",
+    "input",
+    "math",
+    "nav",
+    "noscript",
+    "object",
+    "script",
+    "select",
+    "style",
+    "svg",
+    "template",
+    "textarea",
+    "video",
+}
+
+
+def _filter_relative_epub_url(url: str) -> str | None:
+    """Keep only application-generated relative EPUB URLs."""
+    target = urlsplit(url)
+    if target.netloc:
+        return None
+    if not target.path and target.fragment:
+        return url
+    if target.path.startswith("/read/"):
+        return url
+    if target.path.startswith("images/"):
+        return url
+    return None
+
+
+def _filter_epub_attribute(tag: str, attribute: str, value: str) -> str | None:
+    """Restrict image sources to files extracted into the book's image directory."""
+    if tag != "img" or attribute != "src":
+        return value
+
+    target = urlsplit(value)
+    path = PurePosixPath(target.path)
+    if (
+        target.scheme
+        or target.netloc
+        or target.query
+        or target.fragment
+        or len(path.parts) != 2
+        or path.parts[0] != "images"
+        or path.parts[1] in {"", ".", ".."}
+    ):
+        return None
+    return value
+
+
+EPUB_HTML_CLEANER = nh3.Cleaner(
+    tags=ALLOWED_EPUB_TAGS,
+    clean_content_tags=DISCARDED_EPUB_TAGS,
+    attributes={
+        "*": {"dir", "id", "lang", "title"},
+        "a": {"href"},
+        "img": {"alt", "height", "src", "width"},
+        "li": {"value"},
+        "ol": {"start"},
+        "td": {"colspan", "rowspan"},
+        "th": {"colspan", "rowspan"},
+    },
+    attribute_filter=_filter_epub_attribute,
+    url_schemes={"http", "https", "mailto"},
+    url_relative=_filter_relative_epub_url,
+    link_rel="noopener noreferrer",
+)
 
 
 @dataclass
@@ -26,9 +138,7 @@ class Metadata:
     identifiers: list[str]
 
     def generate_key(self) -> uuid.UUID:
-        # I want to have a stable way of generating a unique id for each book.
-        # It's possible to directly use str(self), but if any new fields are added in the future
-        # it would change all of the IDs.
+        # Keep IDs stable when unrelated metadata fields are added.
         id_source = f"{self.title}{sorted(self.authors)}{sorted(self.identifiers)}"
         return uuid.uuid5(uuid.NAMESPACE_DNS, id_source)
 
@@ -40,13 +150,13 @@ class ChapterContent:
     A single file might contain multiple logical chapters (TOC entries).
     """
 
-    id: str  # Internal ID (e.g., 'item_1')
-    href: str  # Filename (e.g., 'part01.html')
-    title: str  # Best guess title from file
-    content: str  # Cleaned HTML with rewritten image paths
-    text: str  # Plain text for search/translation
-    order: int  # Linear reading order
-    chapter_characters: int  # Number of Chinese characters in the chapter
+    id: str
+    href: str
+    title: str
+    content: str
+    text: str
+    order: int
+    chapter_characters: int
 
 
 @dataclass
@@ -54,9 +164,9 @@ class TOCEntry:
     """Represents a logical entry in the navigation sidebar."""
 
     title: str
-    href: str  # original href (e.g., 'part01.html#chapter1')
-    file_href: str  # just the filename (e.g., 'part01.html')
-    anchor: str  # just the anchor (e.g., 'chapter1'), empty if none
+    href: str
+    file_href: str
+    anchor: str
     children: list["TOCEntry"] = field(default_factory=list)
 
 
@@ -82,29 +192,9 @@ def _process_metadata(ebook):
     return Metadata(title, authors, identifiers)
 
 
-def clean_html_content(soup: BeautifulSoup) -> BeautifulSoup:
-    # Remove dangerous/useless tags
-    for tag in soup(["script", "style", "iframe", "video", "nav", "form", "button"]):
-        tag.decompose()
-
-    # Remove HTML comments
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-        comment.extract()
-
-    # Remove input tags
-    for tag in soup.find_all("input"):
-        tag.decompose()
-
-    for tag in soup.find_all("span"):
-        tag.unwrap()
-
-    return soup
-
-
 def extract_plain_text(soup: BeautifulSoup) -> str:
     """Extract clean text for LLM/Search usage."""
     text = soup.get_text(separator=" ")
-    # Collapse whitespace
     return " ".join(text.split())
 
 
@@ -214,7 +304,6 @@ def get_fallback_toc(book_obj):
     for item in book_obj.get_items():
         if item.get_type() == ebooklib.ITEM_DOCUMENT:
             name = item.get_name()
-            # Try to guess a title from the content or ID
             title = (
                 item.get_name()
                 .replace(".html", "")
@@ -231,8 +320,7 @@ def generate_book(path, library_dir) -> Book:
     metadata = _process_metadata(ebook)
     unique_key = metadata.generate_key()
 
-    # Prepare output directories
-    # TODO: Ask the user if we should replace the book if it already exists instead of always overwritting it
+    # TODO: Ask before replacing an existing book.
     os.makedirs(library_dir, exist_ok=True)
     output_dir = f"{library_dir}/{unique_key}"
     if os.path.exists(output_dir):
@@ -240,14 +328,11 @@ def generate_book(path, library_dir) -> Book:
     images_dir = os.path.join(output_dir, "images")
     os.makedirs(images_dir, exist_ok=True)
 
-    # Extract images
-    image_map = {}  # Key: internal_path, Value: local_relative_path
+    image_map: dict[str, str] = {}
     cover_image_filename = None
     for item in ebook.get_items():
         if item.get_type() in (ebooklib.ITEM_IMAGE, ebooklib.ITEM_COVER):
-            # Normalize filename
             original_fname = os.path.basename(item.get_name())
-            # Sanitize filename for OS
             safe_fname = "".join(
                 [c for c in original_fname if c.isalpha() or c.isdigit() or c in "._-"]
             ).strip()
@@ -259,18 +344,15 @@ def generate_book(path, library_dir) -> Book:
             ):
                 cover_image_filename = safe_fname
 
-            # Save to disk
             local_path = os.path.join(images_dir, safe_fname)
             with open(local_path, "wb") as f:
                 f.write(item.get_content())
 
-            # Map keys: We try both the full internal path and just the basename
-            # to be robust against messy HTML src attributes
+            # EPUBs are inconsistent about using full image paths or basenames.
             rel_path = f"images/{safe_fname}"
             image_map[item.get_name()] = rel_path
             image_map[original_fname] = rel_path
 
-    # Generate Table of Contents
     toc_structure = parse_toc_recursive(ebook.toc)
     if not toc_structure:
         toc_structure = get_fallback_toc(ebook)
@@ -283,7 +365,6 @@ def generate_book(path, library_dir) -> Book:
         if item and item.get_type() == ebooklib.ITEM_DOCUMENT:
             spine_indices[normalize_epub_path(item.get_name())] = len(spine_indices)
 
-    # We iterate over the spine (linear reading order)
     for spine_item in ebook.spine:
         item_id, _linear = spine_item
         item = ebook.get_item_with_id(item_id)
@@ -292,21 +373,17 @@ def generate_book(path, library_dir) -> Book:
             continue
 
         if item.get_type() == ebooklib.ITEM_DOCUMENT:
-            # Raw content
             raw_content = item.get_content().decode("utf-8", errors="ignore")
             soup = BeautifulSoup(raw_content, "html.parser")
 
-            # A. Fix Images
             for img in soup.find_all(["img", "image"]):
                 src = img.get("src") or img.get("xlink:href") or img.get("href")
                 if not src:
                     continue
 
-                # Decode URL (part01/image%201.jpg -> part01/image 1.jpg)
                 src_decoded = unquote(src)
                 filename = os.path.basename(src_decoded)
 
-                # Try to find in map
                 new_src = None
                 if src_decoded in image_map:
                     new_src = image_map[src_decoded]
@@ -321,7 +398,6 @@ def generate_book(path, library_dir) -> Book:
                     else:
                         img["href"] = new_src
 
-            # B. Rewrite links between EPUB documents
             rewrite_internal_links(
                 soup,
                 item.get_name(),
@@ -329,31 +405,26 @@ def generate_book(path, library_dir) -> Book:
                 spine_indices,
             )
 
-            # C. Clean HTML
-            soup = clean_html_content(soup)
-
-            # D. Extract Body Content only
             body = soup.find("body")
             if body:
-                # Extract inner HTML of body
-                final_html = "".join([str(x) for x in body.contents])
+                html_fragment = "".join(str(child) for child in body.contents)
             else:
-                final_html = str(soup)
+                html_fragment = str(soup)
 
-            chapter_text = extract_plain_text(soup)
+            final_html = EPUB_HTML_CLEANER.clean(html_fragment)
+            clean_soup = BeautifulSoup(final_html, "html.parser")
+            chapter_text = extract_plain_text(clean_soup)
             chapter_characters = sum(
                 1 for c in chapter_text if "\u4e00" <= c <= "\u9fff"
             )
             total_characters += chapter_characters
-            # E. Create Object
             chapter_index = spine_indices[normalize_epub_path(item.get_name())]
             chapter = ChapterContent(
                 id=item_id,
-                href=item.get_name(),  # Important: This links TOC to Content
-                # Fallback, real titles come from TOC
+                href=item.get_name(),
                 title=f"Section {chapter_index + 1}",
                 content=final_html,
-                text=extract_plain_text(soup),
+                text=chapter_text,
                 order=chapter_index,
                 chapter_characters=chapter_characters,
             )
@@ -369,7 +440,6 @@ def generate_book(path, library_dir) -> Book:
         cover_image=cover_image_filename,
     )
 
-    # Save to file
     p_path = os.path.join(output_dir, "book.pkl")
     with open(p_path, "wb") as f:
         pickle.dump(processed_book, f)
