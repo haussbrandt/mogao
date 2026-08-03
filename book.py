@@ -1,4 +1,6 @@
-# This file is heavily inspired by https://github.com/karpathy/reader3/blob/master/reader3.py
+# Portions derived from reader 3 by Andrej Karpathy.
+# Licensed under the MIT license; see THIRD_PARTY_NOTICES
+
 import os
 import pickle
 import posixpath
