@@ -16,4 +16,5 @@ library/
 video_library/
 
 .env
+config.toml
 Caddyfile

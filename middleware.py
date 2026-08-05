@@ -5,10 +5,10 @@ import logging
 import os
 import secrets
 import time
+
 import bcrypt
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             try:
                 credentials = base64.b64decode(auth_header[6:]).decode()
                 username, password = credentials.split(":", 1)
-                username_ok = secrets.compare_digest(username, "admin")
+                username_ok = secrets.compare_digest(
+                    username, os.environ["MOGAO_ADMIN_USERNAME"]
+                )
                 password_ok = bcrypt.checkpw(
                     password.encode(),
                     os.environ["MOGAO_ADMIN_HASH"].encode(),
