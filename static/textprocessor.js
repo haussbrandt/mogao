@@ -2,18 +2,31 @@ function getLookupRoot(startNode) {
   return startNode.parentElement?.closest("[data-lookup-root]") || bookContent;
 }
 
+const LOOKUP_NON_READING_SELECTOR = "rt,rp,script,style";
+
+function isReadingTextNode(node) {
+  return !node.parentElement?.closest(LOOKUP_NON_READING_SELECTOR);
+}
+
+function createReadingTextWalker(root) {
+  return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return isReadingTextNode(node)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+}
+
 function getTreeWalker(startNode) {
-  const walker = document.createTreeWalker(
-    getLookupRoot(startNode),
-    NodeFilter.SHOW_TEXT,
-    null,
-    false,
-  );
+  const walker = createReadingTextWalker(getLookupRoot(startNode));
   walker.currentNode = startNode;
   return walker;
 }
 
 function getSmartSnippet(startNode, startOffset) {
+  if (!isReadingTextNode(startNode)) return "";
+
   let text = "";
   const walker = getTreeWalker(startNode);
   let node = startNode;
@@ -35,6 +48,8 @@ function getBlockParent(node) {
 }
 
 function getSentence(startNode, startOffset) {
+	if (!isReadingTextNode(startNode)) return "";
+
 	const terminators = /[。！？.!?]/;
 	const closingQuotes = /[""''»」)）】\]]/;
 	const originBlock = getBlockParent(startNode);
@@ -42,12 +57,7 @@ function getSentence(startNode, startOffset) {
 
 	// Walk Backwards (Find Start)
 	let leftText = "";
-	const backWalker = document.createTreeWalker(
-	  lookupRoot,
-	  NodeFilter.SHOW_TEXT,
-	  null,
-	  false,
-	);
+	const backWalker = createReadingTextWalker(lookupRoot);
 	backWalker.currentNode = startNode;
 
 	let curr = startNode;
@@ -96,12 +106,7 @@ function getSentence(startNode, startOffset) {
 		let chunk = textToProcess.substring(0, endIdx);
 
 		// Look ahead for closing quotes/spaces
-		let tempWalker = document.createTreeWalker(
-		  lookupRoot,
-		  NodeFilter.SHOW_TEXT,
-		  null,
-		  false,
-		);
+		let tempWalker = createReadingTextWalker(lookupRoot);
 		tempWalker.currentNode = curr;
 		let peekNode = curr;
 		let peekTxt = textToProcess.substring(endIdx);

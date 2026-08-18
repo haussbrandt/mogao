@@ -1,9 +1,21 @@
 function computeStats(root) {
+  function countStatus(status) {
+    const tokenIds = new Set();
+    let untracked = 0;
+
+    for (const span of root.querySelectorAll(`.seg-${status}`)) {
+      if (span.dataset.segToken) tokenIds.add(span.dataset.segToken);
+      else untracked++;
+    }
+
+    return tokenIds.size + untracked;
+  }
+
   return {
-    known: root.querySelectorAll(".seg-known").length,
-    i1: root.querySelectorAll(".seg-i1").length,
-    unknown: root.querySelectorAll(".seg-unknown").length,
-    oov: root.querySelectorAll(".seg-oov").length,
+    known: countStatus("known"),
+    i1: countStatus("i1"),
+    unknown: countStatus("unknown"),
+    oov: countStatus("oov"),
   };
 }
 

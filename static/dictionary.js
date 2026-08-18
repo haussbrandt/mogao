@@ -8,7 +8,8 @@ fetch("/static/dict.json?v=2")
     console.log("Dictionary loaded");
     const known = buildKnownSet();
     annotateBookContent(localDict, known);
-    initStatsButton(bookContent);
+    const content = document.querySelector(".book-content");
+    if (content) initStatsButton(content);
   })
   .catch((err) => console.error("Failed to load dictionary", err));
 

@@ -102,6 +102,10 @@ function segment(sentence, dict, known) {
 // Classification
 
 const SENTENCE_END_RE = /(?<=[。！？…]+)/u;
+const TEXT_BLOCK_SELECTOR =
+  "p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th";
+const NON_READING_SELECTOR = "rt,rp,script,style";
+const CHINESE_RE = /[\u4e00-\u9fff]/;
 
 function classifyWord(word, dict, known) {
   if (isPunct(word)) return "punct";
@@ -141,41 +145,127 @@ const STATUS_CLASS = {
   oov: "seg-oov",
 };
 
+function getTextBlock(node, root) {
+  let element = node.parentElement;
+  while (element && element !== root) {
+    if (element.matches(TEXT_BLOCK_SELECTOR)) return element;
+    element = element.parentElement;
+  }
+  return root;
+}
+
+function analyzeText(text, dict, known, nextTokenId) {
+  const tokens = [];
+  let sentenceStart = 0;
+
+  for (const sentence of splitSentences(text)) {
+    let tokenStart = sentenceStart;
+    for (const { word, status } of analyzeSentence(sentence, dict, known)) {
+      tokens.push({
+        start: tokenStart,
+        end: tokenStart + word.length,
+        status,
+        id: String(nextTokenId.value++),
+      });
+      tokenStart += word.length;
+    }
+    sentenceStart += sentence.length;
+  }
+
+  return tokens;
+}
+
+function annotateTextNodes(nodes, dict, known, nextTokenId) {
+  const text = nodes.map((node) => node.textContent).join("");
+  if (!CHINESE_RE.test(text)) return;
+
+  const tokens = analyzeText(text, dict, known, nextTokenId);
+  let nodeStart = 0;
+  let tokenIndex = 0;
+
+  for (const textNode of nodes) {
+    const originalText = textNode.textContent;
+    const nodeEnd = nodeStart + originalText.length;
+    const frag = document.createDocumentFragment();
+    let localOffset = 0;
+
+    while (tokenIndex < tokens.length && tokens[tokenIndex].end <= nodeStart) {
+      tokenIndex++;
+    }
+
+    let currentTokenIndex = tokenIndex;
+    while (
+      currentTokenIndex < tokens.length &&
+      tokens[currentTokenIndex].start < nodeEnd
+    ) {
+      const token = tokens[currentTokenIndex];
+      const overlapStart = Math.max(token.start, nodeStart) - nodeStart;
+      const overlapEnd = Math.min(token.end, nodeEnd) - nodeStart;
+
+      if (overlapStart > localOffset) {
+        frag.appendChild(
+          document.createTextNode(originalText.slice(localOffset, overlapStart)),
+        );
+      }
+
+      const fragmentText = originalText.slice(overlapStart, overlapEnd);
+      if (token.status === "punct" || !CHINESE_RE.test(fragmentText)) {
+        frag.appendChild(document.createTextNode(fragmentText));
+      } else {
+        const span = document.createElement("span");
+        span.className = STATUS_CLASS[token.status];
+        span.dataset.segToken = token.id;
+        span.textContent = fragmentText;
+        frag.appendChild(span);
+      }
+
+      localOffset = overlapEnd;
+      currentTokenIndex++;
+    }
+
+    if (localOffset < originalText.length) {
+      frag.appendChild(document.createTextNode(originalText.slice(localOffset)));
+    }
+
+    textNode.parentNode.replaceChild(frag, textNode);
+    nodeStart = nodeEnd;
+  }
+}
+
 function annotateNode(root, dict, known) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      if (node.parentElement?.className?.includes("seg-"))
+      if (
+        node.parentElement?.closest(
+          ".seg-known,.seg-unknown,.seg-i1,.seg-oov",
+        )
+      ) {
         return NodeFilter.FILTER_REJECT;
-      const tag = node.parentElement?.tagName;
-      if (tag === "SCRIPT" || tag === "STYLE") return NodeFilter.FILTER_REJECT;
-      if (/[\u4e00-\u9fff]/.test(node.textContent))
-        return NodeFilter.FILTER_ACCEPT;
-      return NodeFilter.FILTER_SKIP;
+      }
+      if (node.parentElement?.closest(NON_READING_SELECTOR)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return node.textContent.length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP;
     },
   });
 
-  const nodes = [];
-  while (walker.nextNode()) nodes.push(walker.currentNode);
-
-  for (const textNode of nodes) {
-    const sentences = splitSentences(textNode.textContent);
-    if (!sentences.length) continue;
-
-    const frag = document.createDocumentFragment();
-    for (const sentence of sentences) {
-      const analyzed = analyzeSentence(sentence, dict, known);
-      for (const { word, status } of analyzed) {
-        if (status === "punct") {
-          frag.appendChild(document.createTextNode(word));
-        } else {
-          const span = document.createElement("span");
-          span.className = STATUS_CLASS[status];
-          span.textContent = word;
-          frag.appendChild(span);
-        }
-      }
+  const nodeGroups = [];
+  let currentGroup = null;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const block = getTextBlock(node, root);
+    if (!currentGroup || currentGroup.block !== block) {
+      currentGroup = { block, nodes: [] };
+      nodeGroups.push(currentGroup);
     }
-    textNode.parentNode.replaceChild(frag, textNode);
+    currentGroup.nodes.push(node);
+  }
+
+  const nextTokenId = { value: 0 };
+  for (const { nodes } of nodeGroups) {
+    annotateTextNodes(nodes, dict, known, nextTokenId);
   }
 }
 
