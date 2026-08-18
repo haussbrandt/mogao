@@ -19,7 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import video_router
-from anki import call_anki, ensure_anki_available, get_all_words_from_anki_deck
+from anki import (
+    call_anki,
+    ensure_anki_available,
+    get_all_words_from_anki_deck,
+    validate_anki_configuration,
+)
 from book import generate_book
 from config import settings
 from constants import normalize_uuid
@@ -68,6 +73,7 @@ def validate_runtime_requirements() -> None:
 
     if settings.anki.enabled:
         ensure_anki_available()
+        validate_anki_configuration()
 
 
 @asynccontextmanager

@@ -302,6 +302,63 @@ def ensure_anki_available() -> None:
         )
 
 
+def validate_anki_configuration() -> None:
+    deck_names = _get_anki_result("deckNames")
+    if not isinstance(deck_names, list):
+        raise RuntimeError("AnkiConnect returned an invalid deck list")
+    if settings.anki.deck not in deck_names:
+        raise RuntimeError(f"Anki deck does not exist: {settings.anki.deck}")
+
+    model_fields = _get_anki_result(
+        "modelFieldNames", modelName=settings.anki.model
+    )
+    if not isinstance(model_fields, list):
+        raise RuntimeError(
+            f"AnkiConnect returned an invalid field list for model: "
+            f"{settings.anki.model}"
+        )
+
+    missing_fields = {
+        config_name: field_name
+        for config_name, field_name in settings.anki.fields.model_dump().items()
+        if field_name not in model_fields
+    }
+    if missing_fields:
+        formatted_fields = ", ".join(
+            f"{config_name}={field_name!r}"
+            for config_name, field_name in missing_fields.items()
+        )
+        raise RuntimeError(
+            f"Anki model {settings.anki.model!r} is missing configured fields: "
+            f"{formatted_fields}"
+        )
+
+
+def _get_anki_result(action: str, **params):
+    try:
+        response = call_anki(
+            action, request_timeout=ANKI_REQUEST_TIMEOUT_SECONDS, **params
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError) as error:
+        raise RuntimeError(f"AnkiConnect action {action!r} failed") from error
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            f"AnkiConnect action {action!r} returned an invalid response"
+        )
+    if payload.get("error") is not None:
+        raise RuntimeError(
+            f"AnkiConnect action {action!r} failed: {payload['error']}"
+        )
+    if "result" not in payload:
+        raise RuntimeError(
+            f"AnkiConnect action {action!r} returned an invalid response"
+        )
+    return payload["result"]
+
+
 def get_all_words_from_anki_deck(deck_name: str, field_name: str) -> set[str]:
     """
     Sends requests to AnkiConnect to get all cards from the deck `deck_name` and returns a set of values of the field `field_name` from them
