@@ -47,9 +47,15 @@ logger = logging.getLogger(__name__)
 def validate_runtime_requirements() -> None:
     missing_keys = []
     if settings.postprocessing.text.enabled and not os.environ.get(
-        "GEMINI_API_KEY", ""
+        "POSTPROCESSING_API_KEY", ""
     ).strip():
-        missing_keys.append("GEMINI_API_KEY for postprocessing.text")
+        missing_keys.append("POSTPROCESSING_API_KEY for postprocessing.text")
+    if settings.dictionary_generation.enabled and not os.environ.get(
+        "DICTIONARY_GENERATION_API_KEY", ""
+    ).strip():
+        missing_keys.append(
+            "DICTIONARY_GENERATION_API_KEY for dictionary_generation"
+        )
     if settings.postprocessing.audio.enabled and not os.environ.get(
         "ELEVENLABS_API_KEY", ""
     ).strip():

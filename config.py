@@ -62,6 +62,7 @@ class Paths(SettingsModel):
 
 class PostprocessingText(SettingsModel):
     enabled: bool
+    base_url: str
     llm: str
     batch_size: PositiveInt
     timeout: PositiveInt
@@ -79,6 +80,7 @@ class Postprocessing(SettingsModel):
 
 class DictionaryGeneration(SettingsModel):
     enabled: bool
+    base_url: str
     llm: str
     chunk_size: PositiveInt
     requests_per_minute: PositiveInt

@@ -11,6 +11,7 @@ import requests
 from elevenlabs.client import ElevenLabs
 
 from config import settings
+from llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ class Postprocessor:
                     len(processing_card_ids) > 0 and time_since_last >= self.timeout
                 ):
                     logger.info("Starting card postprocessing")
-                    await self.run_gemini_postprocessing(processing_card_ids)
+                    await self.run_text_postprocessing(processing_card_ids)
 
                     self.last_timer_reset = current_time
                     if self.timer_task:
@@ -93,7 +94,7 @@ class Postprocessor:
         except asyncio.CancelledError:
             pass
 
-    async def run_gemini_postprocessing(self, card_ids):
+    async def run_text_postprocessing(self, card_ids):
         cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
         batch_data = []
         for card in cards:
@@ -106,8 +107,8 @@ class Postprocessor:
                     "source_word": card["fields"][settings.anki.fields.word]["value"],
                 }
             )
-        api_key = os.environ.get("GEMINI_API_KEY")
-        results = call_gemini_batch(api_key, batch_data)
+        api_key = os.environ["POSTPROCESSING_API_KEY"]
+        results = await call_llm_batch(api_key, batch_data)
         if results:
             for result in results:
                 try:
@@ -213,9 +214,35 @@ class Postprocessor:
         call_anki("sync")
 
 
-def call_gemini_batch(api_key, batch_data):
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{settings.postprocessing.text.llm}:generateContent?key={api_key}"
+_POSTPROCESSING_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "sentence_meaning": {"type": "string"},
+                    "sentence_pinyin": {"type": "string"},
+                    "formatted_sentence": {"type": "string"},
+                },
+                "required": [
+                    "id",
+                    "sentence_meaning",
+                    "sentence_pinyin",
+                    "formatted_sentence",
+                ],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["results"],
+    "additionalProperties": False,
+}
 
+
+async def call_llm_batch(api_key, batch_data):
     # TODO: This prompt is kind of dumb, but it works
     prompt_template = 'You are an expert Chinese language tutor. Analyze the following sentence and provide its English meaning, pinyin transcription and underline each occurence of the word using <u> and </u>. The sentence is: "{source_text}"\nThe word is "{source_word}"'
     system_prompt = (
@@ -223,38 +250,23 @@ def call_gemini_batch(api_key, batch_data):
         f"For each item, apply this logic: {prompt_template}\n\n"
         f"Input Data (JSON): {json.dumps(batch_data, ensure_ascii=False)}"
     )
-    payload = {
-        "contents": [{"role": "user", "parts": [{"text": system_prompt}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "responseSchema": {
-                "type": "ARRAY",
-                "items": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "id": {"type": "INTEGER"},
-                        "sentence_meaning": {"type": "STRING"},
-                        "sentence_pinyin": {"type": "STRING"},
-                        "formatted_sentence": {"type": "STRING"},
-                    },
-                    "required": [
-                        "id",
-                        "sentence_meaning",
-                        "sentence_pinyin",
-                        "formatted_sentence",
-                    ],
-                },
-            },
-        },
-    }
     try:
-        response = requests.post(api_url, json=payload, timeout=60)
-        response.raise_for_status()
-
-        result_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        return json.loads(result_text)
+        result = await generate_json(
+            base_url=settings.postprocessing.text.base_url,
+            api_key=api_key,
+            model=settings.postprocessing.text.llm,
+            prompt=system_prompt,
+            response_schema=_POSTPROCESSING_RESPONSE_SCHEMA,
+            schema_name="postprocessed_cards",
+            timeout=60,
+        )
+        if not isinstance(result, dict) or not isinstance(
+            result.get("results"), list
+        ):
+            raise LLMResponseError("LLM response did not contain a results array")
+        return result["results"]
     except Exception:
-        logger.exception("Gemini API request failed")
+        logger.exception("LLM API request failed")
         return []
 
 

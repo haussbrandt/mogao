@@ -28,6 +28,7 @@ frequencies = "dicts/freqs"
 
 [postprocessing.text]
 enabled = true
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 llm = "gemini-flash-latest"
 batch_size = 5
 timeout = 3600
@@ -38,6 +39,7 @@ voice_id = "nhhJXuFAYDroPyaJSlVA"
 
 [dictionary_generation]
 enabled = true
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
 llm = "gemini-3.5-flash-lite"
 chunk_size = 20000
 requests_per_minute = 14

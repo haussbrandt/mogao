@@ -7,12 +7,9 @@ import re
 from datetime import datetime
 from typing import Optional
 
-import google.generativeai as genai  # type: ignore
-from google.api_core import retry_async
-from google.generativeai.types import RequestOptions
-
 from config import settings
 from constants import normalize_uuid
+from llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +159,7 @@ Do NOT include everyday common words that any intermediate learner would know.
 For each item provide:
 - word: the simplified Chinese
 - pinyin: romanization with tone marks (e.g. "Wáng Míng", "qīngōng"). Do not put spaces within a word - Dursley = Désīlǐ.
-- definition: a concise dictionary-style entry in English. For cultural, religious or domain-specific terms,
+- english_meaning: a concise dictionary-style entry in English. For cultural, religious or domain-specific terms,
 include a one-sentence explanation of what the concept actually is - not just its English equivalent.
 Aim for the style of a learner's dictionary or encyclopedia gloss:
 clear, informative, and under 40 words. For real people, include birth and death dates in parentheses.
@@ -200,6 +197,27 @@ Text:
 {text}
 """
 
+_DICTIONARY_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "words": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "word": {"type": "string"},
+                    "pinyin": {"type": "string"},
+                    "english_meaning": {"type": "string"},
+                },
+                "required": ["word", "pinyin", "english_meaning"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["words"],
+    "additionalProperties": False,
+}
+
 
 async def _rate_limited_wait() -> None:
     global _last_request_at
@@ -212,56 +230,32 @@ async def _rate_limited_wait() -> None:
         _last_request_at = asyncio.get_event_loop().time()
 
 
-async def _call_llm(model, text: str) -> list[dict]:
+async def _call_llm(
+    *, base_url: str, api_key: str, model: str, text: str
+) -> list[dict]:
     """Send one chunk to the LLM and return a list of word-entry dicts."""
-    response = await model.generate_content_async(
-        _PROMPT.format(text=text),
-        generation_config={
-            "response_mime_type": "application/json",
-            "response_schema": {
-                "type": "OBJECT",
-                "properties": {
-                    "words": {
-                        "type": "ARRAY",
-                        "items": {
-                            "type": "OBJECT",
-                            "properties": {
-                                "word": {"type": "STRING"},
-                                "pinyin": {"type": "STRING"},
-                                "english_meaning": {"type": "STRING"},
-                            },
-                            "required": ["word", "pinyin", "english_meaning"],
-                        },
-                    }
-                },
-                "required": ["words"],
-            },
-            "temperature": 0.1,
-        },
-        request_options=RequestOptions(
-            timeout=600,
-            retry=retry_async.AsyncRetry(
-                initial=5, multiplier=2, maximum=60, timeout=300
-            ),  # pyright: ignore[reportArgumentType]
-        ),
+    data = await generate_json(
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        prompt=_PROMPT.format(text=text),
+        response_schema=_DICTIONARY_RESPONSE_SCHEMA,
+        schema_name="dictionary_words",
+        temperature=0.1,
+        timeout=600,
     )
-    try:
-        data = json.loads(response.text)
-        return data.get("words", [])
-    except json.JSONDecodeError as error:
-        logger.warning(f"Could not decode LLM response as JSON: {error}")
-        logger.info("Retrying LLM response with raw_decode")
-        data, _ = json.JSONDecoder().raw_decode(response.text.strip())
-    return data.get("words", [])
+    if not isinstance(data, dict) or not isinstance(data.get("words"), list):
+        raise LLMResponseError("LLM response did not contain a words array")
+    return data["words"]
 
 
 async def process_book_background(book_id: str, book, resume: bool = False) -> None:
     """
     Asyncio background task — do not await, use asyncio.create_task().
 
-    Chunks the book spine, calls Gemma for each chunk (respecting the rate
-    limit), and saves discovered words incrementally to book_dict.json so
-    the reader can access them as soon as the first chunk is processed.
+    Chunks the book spine, calls the configured LLM for each chunk (respecting
+    the rate limit), and saves discovered words incrementally to book_dict.json
+    so the reader can access them as soon as the first chunk is processed.
 
     Args:
         book_id:  the UUID folder name (e.g. "a1b2c3d4-...")
@@ -272,16 +266,9 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
     if not settings.dictionary_generation.enabled:
         return
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        logger.warning(
-            f"GEMINI_API_KEY is not set; skipping dictionary for book {book_id}"
-        )
-        return
-
-    genai.configure(api_key=api_key)
+    api_key = os.environ["DICTIONARY_GENERATION_API_KEY"]
     model_name = settings.dictionary_generation.llm
-    model = genai.GenerativeModel(model_name)
+    base_url = settings.dictionary_generation.base_url
 
     chunks = _chunk_spine(book.spine)
     total = len(chunks)
@@ -319,7 +306,12 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
             f"({len(text):,} characters) to the API"
         )
         try:
-            entries = await _call_llm(model, text)
+            entries = await _call_llm(
+                base_url=base_url,
+                api_key=api_key,
+                model=model_name,
+                text=text,
+            )
             return index, entries, None
         except Exception as error:
             logger.exception(f"Book {book_id}: chunk {index + 1} failed")
@@ -385,9 +377,10 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
     """
     Asyncio background task — do not await, use asyncio.create_task().
 
-    Chunks the subtitles, calls Gemma for each chunk (respecting the rate
-    limit), and saves discovered words incrementally to subtitles_dict.json so
-    the user can access them as soon as the first chunk is processed.
+    Chunks the subtitles, calls the configured LLM for each chunk (respecting
+    the rate limit), and saves discovered words incrementally to
+    subtitles_dict.json so the user can access them as soon as the first chunk
+    is processed.
 
     Args:
         video_id:  the UUID folder name (e.g. "a1b2c3d4-...")
@@ -397,16 +390,9 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
     if not settings.dictionary_generation.enabled:
         return
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        logger.warning(
-            f"GEMINI_API_KEY is not set; skipping dictionary for video {video_id}"
-        )
-        return
-
-    genai.configure(api_key=api_key)
+    api_key = os.environ["DICTIONARY_GENERATION_API_KEY"]
     model_name = settings.dictionary_generation.llm
-    model = genai.GenerativeModel(model_name)
+    base_url = settings.dictionary_generation.base_url
 
     safe_id = normalize_uuid(video_id)
     subtitles_path = os.path.join(
@@ -453,7 +439,12 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
             f"({len(text):,} characters) to the API"
         )
         try:
-            entries = await _call_llm(model, text)
+            entries = await _call_llm(
+                base_url=base_url,
+                api_key=api_key,
+                model=model_name,
+                text=text,
+            )
             return index, entries, None
         except Exception as error:
             logger.exception(f"Video {video_id}: chunk {index + 1} failed")

@@ -92,13 +92,19 @@ Place the outputs in `.env`.
 
 You can also change the username at this point.
 
-Put the API keys to the AI services in the same file.
+Put the API keys to the AI services in the same file. LLM text post-processing
+uses `POSTPROCESSING_API_KEY`, while book and video dictionary generation use
+`DICTIONARY_GENERATION_API_KEY`.
 
 #### config.toml
 
 You can configure certain features of Mogao like the Anki deck and field names, paths, AI models used etc. in `config.toml`.
 
 If you don't want to use specific features, you can disable them by setting their `enabled` value to `false`.
+
+The text post-processing and dictionary generation sections each accept their
+own OpenAI-compatible `base_url` and `llm` model. This allows the two features
+to use different providers.
 
 ### Dictionary setup
 
