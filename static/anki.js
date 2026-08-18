@@ -14,6 +14,7 @@ window.addToAnki = function (btn, id) {
     b.disabled = true;
   });
   deckWords.add(word);
+  window.markWordKnown?.(word);
   fetch("/api/new-card", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -45,6 +46,7 @@ window.addToAnkiFromVideo = function (btn, id) {
     b.disabled = true;
   });
   deckWords.add(word);
+  window.markWordKnown?.(word);
   fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/new-card-from-video`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

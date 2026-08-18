@@ -231,4 +231,14 @@ window.reannotateWithNewDict = function (newDict) {
 
   stripAnnotations(bookContent);
   annotateNode(bookContent, newDict, _known);
+  if (typeof refreshStatsPopup === "function") {
+    refreshStatsPopup(bookContent);
+  }
+};
+
+window.markWordKnown = function (word) {
+  if (!word || !_known) return;
+
+  _known.add(word);
+  window.reannotateWithNewDict(window.localDict);
 };
