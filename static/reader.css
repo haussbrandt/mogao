@@ -101,6 +101,7 @@ a.toc-link.active {
 
 /* Main Content */
 #main {
+  min-width: 0;
   flex-grow: 1;
   overflow-y: auto;
   position: relative;
@@ -119,6 +120,8 @@ a.toc-link.active {
 .book-content {
   font-family: "Noto Serif SC", serif;
   text-spacing-trim: trim-start;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .book-content img {
