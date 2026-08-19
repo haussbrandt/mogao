@@ -89,10 +89,22 @@
             <button type="submit" class="delete-btn">x</button>
           </form>
           <div class="book-cover">
+            <div
+              class="generated-cover"
+              style="--cover-hue: {{ book.cover_hue }}"
+              aria-hidden="true"
+            >
+              <div class="generated-cover-title">{{ book.title }}</div>
+              {% if book.author %}
+              <div class="generated-cover-author">{{ book.author }}</div>
+              {% endif %}
+            </div>
             {% if book.cover_url %}
-            <img src="{{ book.cover_url }}" alt="Cover for {{ book.title }}" />
-            {% else %}
-            <div class="no-cover">No Cover</div>
+            <img
+              src="{{ book.cover_url }}"
+              alt="Cover for {{ book.title }}"
+              onerror="this.hidden = true"
+            />
             {% endif %}
           </div>
           <div class="book-title">{{ book.title }}</div>

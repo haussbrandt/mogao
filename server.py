@@ -193,6 +193,18 @@ async def library_view(request: Request):
                     else 0
                 )
 
+                cover_image = os.path.basename(
+                    getattr(book, "cover_image", None) or ""
+                )
+                cover_path = os.path.join(
+                    settings.paths.library, item, "images", cover_image
+                )
+                cover_url = (
+                    f"/read/{item}/images/{cover_image}"
+                    if cover_image and os.path.isfile(cover_path)
+                    else None
+                )
+
                 books.append(
                     {
                         "id": item,
@@ -201,7 +213,8 @@ async def library_view(request: Request):
                         "chapters": len(book.spine),
                         "character_count": getattr(book, "character_count", 0),
                         "tagged_cards_count": len(tagged_card_ids),
-                        "cover_url": f"/read/{item}/images/{book.cover_image}",
+                        "cover_url": cover_url,
+                        "cover_hue": int(UUID(item)) % 360,
                         "processed_at": book.processed_at,
                         "last_read_time": last_read_time,
                     }
