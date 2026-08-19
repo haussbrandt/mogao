@@ -1,6 +1,6 @@
 let localDict = null;
 
-fetch("/static/dict.json?v=2")
+window.dictionaryReady = fetch("/static/dict.json?v=2")
   .then((r) => r.json())
   .then((data) => {
     localDict = data;
@@ -11,7 +11,10 @@ fetch("/static/dict.json?v=2")
     const content = document.querySelector(".book-content");
     if (content) initStatsButton(content);
   })
-  .catch((err) => console.error("Failed to load dictionary", err));
+  .catch((err) => {
+    console.error("Failed to load dictionary", err);
+    throw err;
+  });
 
 function performLookup(text) {
   if (!localDict) return [];

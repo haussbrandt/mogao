@@ -107,7 +107,7 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
     video_codec = probe_video_codec(path)
     audio_codec = probe_audio_codec(path)
     if video_codec in ("hevc", "h264"):
-        # Already a Safari-compatible codec — just remux, no quality loss
+        # Already a Safari-compatible codec — just remux video, no quality loss, can convert audio
         ffmpeg_cmd = [
             "ffmpeg",
             "-i",
@@ -169,7 +169,6 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
         cover_image=f"cover.jpg",
     )
 
-    # Save to file
     p_path = os.path.join(output_dir, "video.pkl")
     with open(p_path, "wb") as f:
         pickle.dump(processed_video, f)

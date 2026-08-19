@@ -81,7 +81,7 @@ DISCARDED_EPUB_TAGS = {
 
 
 def _filter_relative_epub_url(url: str) -> str | None:
-    """Keep only application-generated relative EPUB URLs."""
+    """Keep only application-generated internal EPUB URLs."""
     target = urlsplit(url)
     if target.netloc:
         return None
@@ -195,7 +195,6 @@ def _process_metadata(ebook):
 
 
 def extract_plain_text(soup: BeautifulSoup) -> str:
-    """Extract clean text for LLM/Search usage."""
     text = soup.get_text(separator=" ")
     return " ".join(text.split())
 

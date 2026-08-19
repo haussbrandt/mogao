@@ -36,7 +36,9 @@ function restoreVideoProgress() {
 if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
   restoreVideoProgress();
 } else {
-  video.addEventListener("loadedmetadata", restoreVideoProgress, { once: true });
+  video.addEventListener("loadedmetadata", restoreVideoProgress, {
+    once: true,
+  });
 }
 
 video.addEventListener("timeupdate", () => {
@@ -47,10 +49,6 @@ video.addEventListener("timeupdate", () => {
 video.addEventListener("pause", () => saveVideoProgress());
 video.addEventListener("seeked", () => saveVideoProgress());
 window.addEventListener("pagehide", () => saveVideoProgress(true));
-
-const bookContent = overlay; // FIXME: HACK to make textprocessor.js work
-window.MOGAO_CONFIG.bookId = window.MOGAO_CONFIG.videoID; // FIXME: Yet another hack
-function initStatsButton(bookContent) {} // FIXME: Another HACK to make dictionary.js work
 
 let segmentedSubs = [];
 let currentHighlightSpans = [];

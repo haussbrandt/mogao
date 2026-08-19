@@ -34,7 +34,7 @@
   /**
    * Merge server words into window.localDict.
    * We only add; we never overwrite an entry that already came from the main
-   * dictionary (those have richer data and user-verified frequency ranks).
+   * dictionary.
    * Returns the number of newly added words.
    */
   function mergeWords(words) {
@@ -63,7 +63,7 @@
     const added = mergeWords(data.words);
 
     // If we added new words and segmentation is running, re-annotate so the
-    // newly recognised proper nouns get coloured correctly right away.
+    // newly recognised words get coloured correctly right away.
     if (added > 0 && typeof window.reannotateWithNewDict === "function") {
       window.reannotateWithNewDict(window.localDict);
     }
@@ -71,22 +71,12 @@
     return data;
   }
 
-  // ── Entry point: wait for dictionary.js to finish loading localDict ─────────
-  await new Promise((resolve) => {
-    // dictionary.js is synchronous or near-synchronous — give it one tick first
-    if (window.localDict) {
-      return resolve();
-    }
-    const id = setInterval(() => {
-      if (window.localDict) {
-        clearInterval(id);
-        resolve();
-      }
-    }, 100);
-  });
-
+  try {
+    await window.dictionaryReady;
+  } catch {
+    return;
+  }
   let data = await fetchAndMerge();
-  console.log(data);
 
   // Poll while still processing (server is working through chunks in the background)
   if (data?.status === "processing") {

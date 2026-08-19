@@ -1,4 +1,3 @@
-# build_dictionary.py
 import glob
 import json
 import logging
@@ -70,7 +69,6 @@ def load_dictionary():
             if match:
                 trad, simp, pinyin_raw, defs_str = match.groups()
 
-                # TODO: I think it's overcomplicated but it works, so I leave it for now
                 pinyin_regex = re.compile(r"([a-zA-Zü:]+)([1-5])")
                 definitions = []
                 for definition in defs_str.split("/"):
@@ -99,7 +97,7 @@ def load_dictionary():
 
 def load_frequency():
     """
-    Scans FREQ_DIR for Yomitan-formatted JSON files.
+    Scans the directory set in the config file for Yomitan-formatted JSON files.
     Calculates the Harmonic Mean of ranks across all files.
     """
     global CHINESE_FREQ
@@ -119,9 +117,7 @@ def load_frequency():
     )
 
     if not files:
-        logger.warning(
-            f"No frequency JSON files found in {settings.paths.frequencies}"
-        )
+        logger.warning(f"No frequency JSON files found in {settings.paths.frequencies}")
         return
 
     for file_path in files:
@@ -160,7 +156,6 @@ def build():
     logger.info("Merging dictionary and frequency data")
     output = {}
 
-    # server.CHINESE_DICT is already loaded by importing server
     for word, entries in CHINESE_DICT.items():
         freq = CHINESE_FREQ.get(word)
 

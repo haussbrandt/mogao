@@ -1,4 +1,7 @@
-let totalChars = 0;
+const totalChars =
+  Number(
+    window.MOGAO_CONFIG.chapter_lengths?.[window.MOGAO_CONFIG.chapterIndex],
+  ) || 0;
 let ignoreNextScroll = false;
 const charProgressDisplay = document.getElementById("char-progress");
 const bookContentElement = document.getElementsByClassName("book-content")[0];
@@ -6,15 +9,6 @@ const bookContentElement = document.getElementsByClassName("book-content")[0];
 function countChineseChars(str) {
   const matches = str.match(/[\u4e00-\u9fff]/g);
   return matches ? matches.length : 0;
-}
-
-// TODO: It's now precalculated when adding a book, so this can be removed
-function countTotalCharacters() {
-  if (!bookContentElement) return 0;
-  const text =
-    bookContentElement.textContent || bookContentElement.innerText || "";
-  totalChars = countChineseChars(text);
-  return totalChars;
 }
 
 function countReadCharacters() {
@@ -129,7 +123,6 @@ function updateCharProgress() {
 }
 
 window.addEventListener("load", function () {
-  countTotalCharacters();
   updateCharProgress();
   const savedPercentage = window.MOGAO_CONFIG.initialScroll;
   if (savedPercentage > 0) {

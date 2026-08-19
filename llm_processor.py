@@ -17,7 +17,7 @@ CHUNK_SIZE_CHARS = settings.dictionary_generation.chunk_size
 RATE_LIMIT_PER_MIN = settings.dictionary_generation.requests_per_minute
 MIN_INTERVAL_S = 60.0 / RATE_LIMIT_PER_MIN
 
-# Global rate-limiter (shared across all concurrent book-processing tasks)
+# Global rate-limiter (shared across all concurrent processing tasks)
 _rate_lock: Optional[asyncio.Lock] = None
 _last_request_at: float = 0.0
 
@@ -260,7 +260,7 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
     Args:
         book_id:  the UUID folder name (e.g. "a1b2c3d4-...")
         book:     a fully-loaded Book dataclass
-        resume:   if True, skip chunks already counted in processed_chunks
+        resume:   if True, skip chunks already present in completed_indices
                   (used on server restart to recover interrupted jobs)
     """
     if not settings.dictionary_generation.enabled:
@@ -384,7 +384,7 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
 
     Args:
         video_id:  the UUID folder name (e.g. "a1b2c3d4-...")
-        resume:    if True, skip chunks already counted in processed_chunks
+        resume:    if True, skip chunks already present in completed_indices
                    (used on server restart to recover interrupted jobs)
     """
     if not settings.dictionary_generation.enabled:
@@ -508,9 +508,9 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
 
 async def resume_interrupted_processing() -> None:
     """
-    Called once at server startup. Scans all book folders for any
-    book_dict.json files whose status is still "processing" (meaning the
-    server was shut down mid-run) and resumes them as background tasks.
+    Called once at server startup. Scans all book folders and resumes processing when
+    book_dict.json still has "processing" status (meaning the
+    server was shut down mid-run), is missing or corrupt.
     Also does the same for video folders and subtitles_dict.json files.
     """
     if not settings.dictionary_generation.enabled:

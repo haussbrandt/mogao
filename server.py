@@ -45,25 +45,25 @@ from llm_processor import (
 from middleware import AuthMiddleware
 from temp_files import new_temp_path
 
-
 logger = logging.getLogger(__name__)
 
 
 def validate_runtime_requirements() -> None:
     missing_keys = []
-    if settings.postprocessing.text.enabled and not os.environ.get(
-        "POSTPROCESSING_API_KEY", ""
-    ).strip():
+    if (
+        settings.postprocessing.text.enabled
+        and not os.environ.get("POSTPROCESSING_API_KEY", "").strip()
+    ):
         missing_keys.append("POSTPROCESSING_API_KEY for postprocessing.text")
-    if settings.dictionary_generation.enabled and not os.environ.get(
-        "DICTIONARY_GENERATION_API_KEY", ""
-    ).strip():
-        missing_keys.append(
-            "DICTIONARY_GENERATION_API_KEY for dictionary_generation"
-        )
-    if settings.postprocessing.audio.enabled and not os.environ.get(
-        "ELEVENLABS_API_KEY", ""
-    ).strip():
+    if (
+        settings.dictionary_generation.enabled
+        and not os.environ.get("DICTIONARY_GENERATION_API_KEY", "").strip()
+    ):
+        missing_keys.append("DICTIONARY_GENERATION_API_KEY for dictionary_generation")
+    if (
+        settings.postprocessing.audio.enabled
+        and not os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    ):
         missing_keys.append("ELEVENLABS_API_KEY for postprocessing.audio")
 
     if missing_keys:
@@ -81,10 +81,7 @@ async def lifespan(app: FastAPI):
     validate_runtime_requirements()
     if settings.postprocessing.audio.enabled:
         postprocessor.initialize_clients()
-    if (
-        settings.postprocessing.text.enabled
-        or settings.postprocessing.audio.enabled
-    ):
+    if settings.postprocessing.text.enabled or settings.postprocessing.audio.enabled:
         asyncio.create_task(postprocessor.check_and_process())
     if settings.dictionary_generation.enabled:
         asyncio.create_task(resume_interrupted_processing())
@@ -165,10 +162,7 @@ async def create_new_anki_card(data: NewCardRequest):
         "tags": tags,
     }
     call_anki("addNote", note=note)
-    if (
-        settings.postprocessing.text.enabled
-        or settings.postprocessing.audio.enabled
-    ):
+    if settings.postprocessing.text.enabled or settings.postprocessing.audio.enabled:
         asyncio.create_task(postprocessor.check_and_process())
     call_anki("sync")
     return {"status": "ok"}
@@ -250,7 +244,6 @@ async def upload_book(files: list[UploadFile] = File(...)):
             logger.exception("Error processing book")
             raise HTTPException(status_code=500, detail="Failed to process book")
         finally:
-            # Cleanup temp file
             if os.path.exists(temp_filename):
                 os.remove(temp_filename)
 
@@ -307,7 +300,6 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     save_progress(safe_id, chapter_index, initial_scroll_percentage)
 
     current_chapter = book.spine[chapter_index]
-    # Calculate Prev/Next links
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
     deck_words = set()

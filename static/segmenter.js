@@ -8,7 +8,6 @@ const HSK123 =
     " ",
   );
 const NUMBERS = new Set("零一二三四五六七八九十百千万亿两");
-// Stored after init so the Show button can re-annotate without re-fetching
 let _known = null;
 
 const PUNCT_RE =
@@ -102,8 +101,7 @@ function segment(sentence, dict, known) {
 // Classification
 
 const SENTENCE_END_RE = /(?<=[。！？…]+)/u;
-const TEXT_BLOCK_SELECTOR =
-  "p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th";
+const TEXT_BLOCK_SELECTOR = "p,div,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th";
 const NON_READING_SELECTOR = "rt,rp,script,style";
 const CHINESE_RE = /[\u4e00-\u9fff]/;
 
@@ -204,7 +202,9 @@ function annotateTextNodes(nodes, dict, known, nextTokenId) {
 
       if (overlapStart > localOffset) {
         frag.appendChild(
-          document.createTextNode(originalText.slice(localOffset, overlapStart)),
+          document.createTextNode(
+            originalText.slice(localOffset, overlapStart),
+          ),
         );
       }
 
@@ -224,7 +224,9 @@ function annotateTextNodes(nodes, dict, known, nextTokenId) {
     }
 
     if (localOffset < originalText.length) {
-      frag.appendChild(document.createTextNode(originalText.slice(localOffset)));
+      frag.appendChild(
+        document.createTextNode(originalText.slice(localOffset)),
+      );
     }
 
     textNode.parentNode.replaceChild(frag, textNode);
@@ -236,9 +238,7 @@ function annotateNode(root, dict, known) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       if (
-        node.parentElement?.closest(
-          ".seg-known,.seg-unknown,.seg-i1,.seg-oov",
-        )
+        node.parentElement?.closest(".seg-known,.seg-unknown,.seg-i1,.seg-oov")
       ) {
         return NodeFilter.FILTER_REJECT;
       }

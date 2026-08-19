@@ -99,7 +99,6 @@ h1 {
 }
 
 .delete-btn {
-  /* Styling to make it a small circle */
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -108,13 +107,12 @@ h1 {
   color: var(--bg-base);
   font-size: 18px;
   font-weight: bold;
-  line-height: 22px; /* Center the × verticaly */
+  line-height: 22px;
   text-align: center;
   cursor: pointer;
   padding: 0;
 
-  /* Animation properties */
-  opacity: 0; /* Hidden by default */
+  opacity: 0;
   transition:
     opacity 0.2s ease;
     transform 0.1s ease;

@@ -183,6 +183,14 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
     return {"status": "ok"}
 
 
+def process_uploaded_video(path, original_filename):
+    try:
+        generate_video(path, original_filename)
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
 @router.post("/upload")
 async def upload_video(
     background_tasks: BackgroundTasks,
@@ -201,7 +209,9 @@ async def upload_video(
         except Exception:
             logger.exception(f"Error saving uploaded video {original_filename}")
             raise HTTPException(status_code=500, detail="Failed to process video")
-        background_tasks.add_task(generate_video, temp_filename, original_filename)
+        background_tasks.add_task(
+            process_uploaded_video, temp_filename, original_filename
+        )
 
     load_video_cached.cache_clear()
     return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
@@ -592,7 +602,6 @@ async def get_video_dict_api(video_id: UUID):
     return JSONResponse(data)
 
 
-# TODO: This class seems unnecessary
 class SaveVideoSortRequest(BaseModel):
     sort_order: str
 
