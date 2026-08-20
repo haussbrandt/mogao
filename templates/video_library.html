@@ -34,7 +34,30 @@
   <body data-video-base-path="{{ video_base_path }}">
     <div class="container">
       <div class="header-row">
-        <h1>Videos</h1>
+        <div class="library-switcher" data-library-switcher>
+          <h1>
+            <button
+              type="button"
+              class="library-switcher-trigger"
+              aria-expanded="false"
+              aria-controls="library-switcher-menu"
+              data-library-switcher-trigger
+            >
+              Videos
+              <span class="library-switcher-chevron" aria-hidden="true"></span>
+            </button>
+          </h1>
+          <nav
+            id="library-switcher-menu"
+            class="library-switcher-menu"
+            aria-label="Choose library"
+            data-library-switcher-menu
+            hidden
+          >
+            <a href="/">Books</a>
+            <a href="{{ video_base_path }}/" aria-current="page">Videos</a>
+          </nav>
+        </div>
         <div class="controls-wrapper">
           <!-- prettier-ignore -->
           <select id="sort-selector" data-sort-selector>
@@ -136,5 +159,6 @@
     </div>
     <script src="{{ url_for('static', path='library_sort.js') }}"></script>
     <script src="{{ url_for('static', path='video_library.js') }}"></script>
+    <script src="{{ url_for('static', path='library_switcher.js') }}"></script>
   </body>
 </html>

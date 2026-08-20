@@ -474,7 +474,7 @@ wheels = [
 
 [[package]]
 name = "mogao"
-version = "1.19.6"
+version = "1.20.0"
 source = { virtual = "." }
 dependencies = [
     { name = "bcrypt" },

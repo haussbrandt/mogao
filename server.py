@@ -225,7 +225,12 @@ async def library_view(request: Request):
     return templates.TemplateResponse(
         request,
         "library.html",
-        {"request": request, "books": books, "current_sort": current_sort},
+        {
+            "request": request,
+            "books": books,
+            "current_sort": current_sort,
+            "video_base_path": video_router.video_base_path(),
+        },
     )
 
 
