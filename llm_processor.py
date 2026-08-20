@@ -506,7 +506,7 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         )
 
 
-async def resume_interrupted_processing() -> None:
+async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
     """
     Called once at server startup. Scans all book folders and resumes processing when
     book_dict.json still has "processing" status (meaning the
@@ -541,6 +541,9 @@ async def resume_interrupted_processing() -> None:
                 logger.exception(f"Could not resume dictionary for book {book_id}")
     except FileNotFoundError:
         pass
+    if not include_videos:
+        return
+
     try:
         for video_id in os.listdir(settings.paths.video_library):
             if not os.path.isdir(settings.paths.video_library / video_id):

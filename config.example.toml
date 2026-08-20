@@ -26,6 +26,9 @@ video_library = "video_library"
 dictionary = "dicts/cedict_ts.u8"
 frequencies = "dicts/freqs"
 
+[video]
+enabled = true
+
 [postprocessing.text]
 enabled = true
 base_url = "https://generativelanguage.googleapis.com/v1beta/openai"

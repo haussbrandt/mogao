@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import shutil
+import subprocess
 from contextlib import asynccontextmanager
 from uuid import UUID
 
@@ -47,6 +48,50 @@ from temp_files import new_temp_path
 
 logger = logging.getLogger(__name__)
 
+SYSTEM_EXECUTABLES = {
+    "ffmpeg": ("-version",),
+    "ffprobe": ("-version",),
+    "yt-dlp": ("--version",),
+}
+
+
+def validate_system_dependencies() -> None:
+    required_executables = set()
+    if settings.video.enabled:
+        required_executables.update(SYSTEM_EXECUTABLES)
+    if settings.postprocessing.audio.enabled:
+        required_executables.add("ffmpeg")
+
+    errors = []
+    for executable in SYSTEM_EXECUTABLES:
+        if executable not in required_executables:
+            continue
+
+        version_args = SYSTEM_EXECUTABLES[executable]
+        executable_path = shutil.which(executable)
+        if executable_path is None:
+            errors.append(f"{executable} was not found on PATH")
+            continue
+
+        try:
+            subprocess.run(
+                [executable_path, *version_args],
+                check=True,
+                capture_output=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            errors.append(f"{executable} could not be executed: {error}")
+
+    if errors:
+        formatted_errors = "\n".join(f"- {error}" for error in errors)
+        raise RuntimeError(
+            "Required system dependencies are unavailable:\n"
+            f"{formatted_errors}\n"
+            "Install the missing dependencies or disable the features that use "
+            "them in config.toml."
+        )
+
 
 def validate_runtime_requirements() -> None:
     missing_keys = []
@@ -71,6 +116,8 @@ def validate_runtime_requirements() -> None:
             "Missing required API configuration: " + ", ".join(missing_keys)
         )
 
+    validate_system_dependencies()
+
     if settings.anki.enabled:
         ensure_anki_available()
         validate_anki_configuration()
@@ -84,8 +131,11 @@ async def lifespan(app: FastAPI):
     if settings.postprocessing.text.enabled or settings.postprocessing.audio.enabled:
         asyncio.create_task(postprocessor.check_and_process())
     if settings.dictionary_generation.enabled:
-        asyncio.create_task(resume_interrupted_processing())
-    asyncio.create_task(video_router.cleanup_processing_jobs())
+        asyncio.create_task(
+            resume_interrupted_processing(include_videos=settings.video.enabled)
+        )
+    if settings.video.enabled:
+        asyncio.create_task(video_router.cleanup_processing_jobs())
     yield
 
 
@@ -93,12 +143,13 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount(
-    video_router.router.prefix + "/static",
-    StaticFiles(directory="static"),
-    name="static",
-)
-app.include_router(video_router.router)
+if settings.video.enabled:
+    app.mount(
+        video_router.router.prefix + "/static",
+        StaticFiles(directory="static"),
+        name="static",
+    )
+    app.include_router(video_router.router)
 
 
 class ProgressRequest(BaseModel):
@@ -230,6 +281,7 @@ async def library_view(request: Request):
             "books": books,
             "current_sort": current_sort,
             "video_base_path": video_router.VIDEO_BASE_PATH,
+            "video_enabled": settings.video.enabled,
         },
     )
 

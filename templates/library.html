@@ -31,6 +31,7 @@
   <body>
     <div class="container">
       <div class="header-row">
+        {% if video_enabled %}
         <div class="library-switcher" data-library-switcher>
           <h1>
             <button
@@ -55,6 +56,9 @@
             <a href="{{ video_base_path }}/">Videos</a>
           </nav>
         </div>
+        {% else %}
+        <h1>Books</h1>
+        {% endif %}
         <div class="controls-wrapper">
           <select id="sort-selector" data-sort-selector>
             <option value="title" data-field="title" data-kind="text" data-direction="asc" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>

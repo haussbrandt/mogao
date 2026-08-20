@@ -60,6 +60,10 @@ class Paths(SettingsModel):
         return CONFIG_PATH.parent / value
 
 
+class VideoSettings(SettingsModel):
+    enabled: bool
+
+
 class PostprocessingText(SettingsModel):
     enabled: bool
     base_url: str
@@ -89,6 +93,7 @@ class DictionaryGeneration(SettingsModel):
 class AppSettings(SettingsModel):
     anki: AnkiSettings
     paths: Paths
+    video: VideoSettings
     postprocessing: Postprocessing
     dictionary_generation: DictionaryGeneration
 
