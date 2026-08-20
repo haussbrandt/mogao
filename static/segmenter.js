@@ -1,6 +1,6 @@
 const MAX_WORD_LEN = 8;
 const OOV_PENALTY = Math.log(50_001);
-const LENGTH_BONUS = 0.5;
+const LENGTH_BONUS = 4;
 const NO_FREQ_KNOWN = 200;
 const NO_FREQ_UNKNOWN = 8000;
 const HSK123 =
@@ -68,7 +68,7 @@ function segment(sentence, dict, known) {
       } else if (dict[word]) {
         oovAdd = 0;
         const fallback = known.has(word) ? NO_FREQ_KNOWN : NO_FREQ_UNKNOWN;
-        const rank = dict[word].frequency ?? fallback;
+        const rank = dict[word].f ?? fallback;
         rankAdd = Math.log(rank + 1) - LENGTH_BONUS * (word.length - 1);
       } else {
         oovAdd = word.length;
