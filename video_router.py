@@ -33,7 +33,9 @@ from video_library import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/video")
+VIDEO_BASE_PATH = "/video"
+
+router = APIRouter(prefix=VIDEO_BASE_PATH)
 
 ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm")
 ALLOWED_SUBTITLE_EXTENSIONS = (".srt",)
@@ -41,14 +43,6 @@ CHUNK_UPLOAD_PATH = "video_uploads"
 CHUNK_SIZE = 50 * 1024 * 1024
 PROCESSING_JOB_RETENTION_SECONDS = 60 * 60
 processing_jobs: dict[UUID, dict] = {}
-
-
-def video_base_path() -> str:
-    """Return the configured public URL prefix used by the video frontend."""
-    base_path = os.environ.get("MOGAO_VIDEO_BASE_PATH", router.prefix).strip()
-    if not base_path:
-        return ""
-    return f"/{base_path.strip('/')}"
 
 
 def format_video_duration(duration: float) -> str:
@@ -214,7 +208,7 @@ async def upload_video(
         )
 
     load_video_cached.cache_clear()
-    return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
+    return RedirectResponse(url=f"{VIDEO_BASE_PATH}/", status_code=303)
 
 
 class StartChunkUploadRequest(BaseModel):
@@ -385,7 +379,7 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
     if settings.dictionary_generation.enabled:
         asyncio.create_task(process_subtitles_background(safe_id))
 
-    return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
+    return RedirectResponse(url=f"{VIDEO_BASE_PATH}/", status_code=303)
 
 
 # TODO: refactor, move to correct file etc.
@@ -520,7 +514,7 @@ async def delete_video(video_id: UUID):
     else:
         raise HTTPException(status_code=404, detail="video not found")
 
-    return RedirectResponse(url=f"{video_base_path()}/", status_code=303)
+    return RedirectResponse(url=f"{VIDEO_BASE_PATH}/", status_code=303)
 
 
 class VideoProgressRequest(BaseModel):
@@ -569,7 +563,7 @@ async def watch_video(request: Request, video_id: UUID):
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
             "anki_enabled": settings.anki.enabled,
-            "video_base_path": video_base_path(),
+            "video_base_path": VIDEO_BASE_PATH,
         },
     )
 
@@ -649,7 +643,7 @@ async def video_library_view(request: Request):
                         "character_count": getattr(video, "character_count", 0),
                         "tagged_cards_count": len(tagged_card_ids),
                         "cover_url": (
-                            f"{video_base_path()}/{item}/{video.cover_image}"
+                            f"{VIDEO_BASE_PATH}/{item}/{video.cover_image}"
                         ),
                         "processed_at": video.processed_at,
                         "last_watch_time": last_watch_time,
@@ -664,7 +658,7 @@ async def video_library_view(request: Request):
         {
             "request": request,
             "videos": videos,
-            "video_base_path": video_base_path(),
+            "video_base_path": VIDEO_BASE_PATH,
             "current_sort": current_sort,
         },
     )
