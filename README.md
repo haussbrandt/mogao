@@ -23,35 +23,15 @@ Mogao is a mobile-first EPUB reader and video player for Chinese learners with i
 
 ## Quickstart
 
-Run the following commands to launch Mogao. For more specific instructions and configuration, check the following section.
-
-Install Anki with AnkiConnect, FFmpeg, yt-dlp, uv and unzip using your system's package manager or your preferred method.
-
+Install the [prerequisites](#prerequisites), clone the repository and run the quickstart script:
 
 ```shell
-
 git clone https://github.com/haussbrandt/mogao.git
 cd mogao
-uv sync
-cp .env.example .env
-cp config.example.toml config.toml
-
-# Set the output of the next command as MOGAO_SESSION_SECRET in .env:
-uv run python -c 'import secrets; print(secrets.token_hex(32))'
-
-# Set the output of the next command as MOGAO_ADMIN_HASH in .env:
-uv run python -c 'import bcrypt, getpass; p = getpass.getpass("Admin password: "); print(bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode())'
-
-# Also set your API keys in .env
-
-# You most likely also need to modify the Anki deck name and fields to match your deck
-
-# Setup the dictionaries following the "Dictionary setup" section below
-
-uv run server.py
-
-# You can now open the URL in your browser
+./quickstart.sh
 ```
+
+The quickstart script will handle some of the required things, but there are still some steps you need to perform manually (like set up the API keys, modify the Anki configuration or disable features you don't want to use). The script will print a list of these steps at the end.
 
 ## Installation and configuration
 
@@ -60,11 +40,9 @@ uv run server.py
 Mogao is based on Python 3.12+ and it's the only hard dependency of this project. To use all the features, there are also these optional dependencies:
 - Anki + AnkiConnect - necessary for creating flashcards
 - FFmpeg/ffprobe - necessary for the audio and video features
-- yt-dlp - necessary for downloading videos from URLs
 
 The recommended setup also uses:
 - uv - the recommended way to manage Python dependencies
-- unzip - unpacking the dictionary files
 - Caddy or another proxy - HTTPS deployment
 
 ### Config files
@@ -117,7 +95,8 @@ Download the `.zip` version. The path to the unzipped file should match the path
 Mogao also supports optional frequency dictionaries.
 I recommend using the ones you can find [here](https://zenith-raincoat-5cf.notion.site/Yomitan-Setup-TTS-f454d76706834716bf93919b89145e57) under the name `zhfreq_lists.zip`, but others following the same format should work, too. You can add as many of them as you want - Mogao will calculate the harmonic mean. They should form a nested structure inside the directory specified under the `frequencies` field in the `[paths]` section of the `config.toml`.
 
-You can achieve this by running the following commands after downloading both files:
+You can achieve this with `unzip` or another archive extraction tool. For
+example, run the following commands after downloading both files:
 ```shell
 mkdir -p dicts/freqs
 unzip path/to/cedict_1_0_ts_utf-8_mdbg.zip -d dicts

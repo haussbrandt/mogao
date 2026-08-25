@@ -7,6 +7,7 @@ import pickle
 import re
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from uuid import UUID
@@ -419,7 +420,9 @@ async def download_and_process(url: str):
     try:
         result = subprocess.run(
             [
-                "yt-dlp",
+                sys.executable,
+                "-m",
+                "yt_dlp",
                 "-f",
                 "bestvideo[height<=1080][vcodec^=avc][ext=mp4]+bestaudio[acodec=aac]/bestvideo[vcodec^=hev][ext=mp4]+bestaudio[acodec=aac]/bestvideo+bestaudio",
                 "--merge-output-format",

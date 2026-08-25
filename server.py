@@ -51,7 +51,6 @@ logger = logging.getLogger(__name__)
 SYSTEM_EXECUTABLES = {
     "ffmpeg": ("-version",),
     "ffprobe": ("-version",),
-    "yt-dlp": ("--version",),
 }
 
 

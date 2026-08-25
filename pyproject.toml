@@ -1,6 +1,6 @@
 [project]
 name = "mogao"
-version = "1.22.0"
+version = "1.23.0"
 description = "A mobile-first EPUB reader and video player for Chinese learners with instant dictionary lookups and Anki flashcard creation"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -17,4 +17,5 @@ dependencies = [
     "python-multipart>=0.0.21",
     "requests>=2.32.5",
     "uvicorn>=0.40.0",
+    "yt-dlp[default]>=2026.8.19",
 ]
