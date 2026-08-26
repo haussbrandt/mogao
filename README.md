@@ -86,27 +86,32 @@ to use different providers.
 
 ### Dictionary setup
 
-Mogao works best with a popup dictionary, but dictionary data is not bundled with this repository.
+Mogao includes a ready-to-use popup dictionary based on
+[CC-CEDICT](https://cc-cedict.org/) with frequency data derived from
+[BCC corpus](https://bcc.blcu.edu.cn/) and
+[SUBTLEX-CH](https://doi.org/10.1371/journal.pone.0010729).
 
-I recommend using [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict), but any dictionary in CC-CEDICT format should work, too.
+You can rebuild `static/dict.json` from the latest sources using:
 
-Download the `.zip` version. The path to the unzipped file should match the path specified under the `dictionary` field in the `[paths]` section of the `config.toml`.
-
-Mogao also supports optional frequency dictionaries.
-I recommend using the ones you can find [here](https://zenith-raincoat-5cf.notion.site/Yomitan-Setup-TTS-f454d76706834716bf93919b89145e57) under the name `zhfreq_lists.zip`, but others following the same format should work, too. You can add as many of them as you want - Mogao will calculate the harmonic mean. They should form a nested structure inside the directory specified under the `frequencies` field in the `[paths]` section of the `config.toml`.
-
-You can achieve this with `unzip` or another archive extraction tool. For
-example, run the following commands after downloading both files:
-```shell
-mkdir -p dicts/freqs
-unzip path/to/cedict_1_0_ts_utf-8_mdbg.zip -d dicts
-unzip -q path/to/zhfreq_lists.zip -d dicts/freqs && for archive in dicts/freqs/*.zip; do unzip -q "$archive" -d "${archive%.zip}"; done
-```
-
-Run the following command from the repository root. It reads the configured files and generates `static/dict.json`:
 ```shell
 uv run build_dictionary.py
 ```
+
+The builder downloads the source data, converts the frequency counts to
+comparable ranks and generates a single dictionary file. It can also use local
+or alternative sources. Run `uv run build_dictionary.py --help` for all
+options. For example:
+
+```shell
+uv run build_dictionary.py \
+  --cedict path/to/cedict_ts.u8 \
+  --without-bcc \
+  --without-subtlex \
+  --frequency path/to/yomitan-frequency-directory
+```
+
+`--frequency` accepts a Yomitan term-metadata JSON file, directory or ZIP and
+may be supplied more than once.
 
 ## HTTPS reverse proxy
 

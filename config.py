@@ -49,8 +49,6 @@ class AnkiSettings(SettingsModel):
 class Paths(SettingsModel):
     library: Path
     video_library: Path
-    dictionary: Path
-    frequencies: Path
 
     @field_validator("*")
     @classmethod

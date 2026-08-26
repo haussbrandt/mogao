@@ -107,8 +107,6 @@ def print_next_steps() -> None:
             "deck, model, and field names in config.toml. Alternatively, set "
             "anki.enabled, postprocessing.text.enabled, and "
             "postprocessing.audio.enabled to false.",
-            "Download the dictionary files, update their paths in config.toml, "
-            "and run:\nuv run build_dictionary.py",
             "Review the remaining paths and feature settings in config.toml.",
             "Start Mogao with:\nuv run server.py",
         ]

@@ -23,8 +23,6 @@ needs_audio = "needs-audio"
 [paths]
 library = "library"
 video_library = "video_library"
-dictionary = "dicts/cedict_ts.u8"
-frequencies = "dicts/freqs"
 
 [video]
 enabled = true

@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Mogao contains code adapted from the following third-party project.
+Mogao contains third-party code and data.
 
 ## reader3
 
@@ -22,3 +22,36 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## CC-CEDICT
+
+Source: https://cc-cedict.org/
+
+License: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Mogao converts CC-CEDICT entries into the compact JSON representation used by
+its popup dictionary. The resulting dictionary data is distributed under CC
+BY-SA 4.0.
+
+## SUBTLEX-CH
+
+Cai, Q., Brysbaert, M. (2010), SUBTLEX-CH: Chinese Word and Character
+Frequencies Based on Film Subtitles, PLOS ONE 5(6): e10729.
+https://doi.org/10.1371/journal.pone.0010729
+
+License: Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+
+Mogao converts the `WCount` column to ranks and combines it with the other frequency sources.
+
+## BCC Corpus
+
+Source: https://bcc.blcu.edu.cn/
+
+Citation requested by the source:
+
+荀恩东, 饶高琦, 肖晓悦, 臧娇娇. 大数据背景下BCC语料库的研制[J].
+语料库语言学, 2016, 3(01): 93-109+118.
+
+Mogao converts the multi-domain word counts to ranks and combines it with the other frequency sources.

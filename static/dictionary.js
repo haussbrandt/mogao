@@ -1,6 +1,6 @@
 let localDict = null;
 
-window.dictionaryReady = fetch("/static/dict.json?v=2")
+window.dictionaryReady = fetch("/static/dict.json?v=3")
   .then((r) => r.json())
   .then((data) => {
     localDict = data;
