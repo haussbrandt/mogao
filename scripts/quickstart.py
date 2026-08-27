@@ -7,7 +7,6 @@ from textwrap import fill
 import bcrypt
 from dotenv import dotenv_values
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = PROJECT_ROOT / ".env"
 CONFIG_PATH = PROJECT_ROOT / "config.toml"
@@ -35,9 +34,7 @@ def prompt_for_admin_password() -> str:
 
         encoded_password = password.encode("utf-8")
         if len(encoded_password) > BCRYPT_MAX_PASSWORD_BYTES:
-            print(
-                "The admin password cannot exceed 72 bytes when UTF-8 encoded."
-            )
+            print("The admin password cannot exceed 72 bytes when UTF-8 encoded.")
             continue
 
         confirmation = getpass.getpass("Confirm admin password: ")
@@ -103,8 +100,11 @@ def print_next_steps() -> None:
             "Add the API keys needed by enabled features to .env, or disable "
             "those features in config.toml.",
             "Install Anki (https://apps.ankiweb.net/) and AnkiConnect "
-            "(https://ankiweb.net/shared/info/2055492159), then update the Anki "
-            "deck, model, and field names in config.toml. Alternatively, set "
+            "(https://ankiweb.net/shared/info/2055492159), "
+            "configure your preferred deck settings in config.toml "
+            "and then keep Anki open "
+            "when starting Mogao. If the configured deck or note type is "
+            "missing, Mogao will offer to create it. Alternatively, set "
             "anki.enabled, postprocessing.text.enabled, and "
             "postprocessing.audio.enabled to false.",
             "Review the remaining paths and feature settings in config.toml.",
