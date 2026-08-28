@@ -6,8 +6,8 @@ window.addToAnki = function (btn, id) {
   );
 
   // Update ALL buttons in the popup for this specific word
-  const allMatchingButtons = document.querySelectorAll(
-    `.anki-btn[data-word="${word}"]`,
+  const allMatchingButtons = [...document.querySelectorAll(".anki-btn")].filter(
+    (button) => button.dataset.word === word,
   );
   allMatchingButtons.forEach((b) => {
     b.textContent = "✓";
@@ -38,8 +38,8 @@ window.addToAnkiFromVideo = function (btn, id) {
   );
 
   // Update ALL buttons in the popup for this specific word
-  const allMatchingButtons = document.querySelectorAll(
-    `.anki-btn[data-word="${word}"]`,
+  const allMatchingButtons = [...document.querySelectorAll(".anki-btn")].filter(
+    (button) => button.dataset.word === word,
   );
   allMatchingButtons.forEach((b) => {
     b.textContent = "✓";

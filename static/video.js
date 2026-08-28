@@ -56,6 +56,33 @@ let currentSentence = "";
 let selectedSubIndex = -1;
 let activeLookupRoot = overlay;
 
+const dictionaryPopupRenderer = createDictionaryPopupRenderer(popBody, {
+  createEntryAction({ item, entry, definitionsHTML }) {
+    if (!window.MOGAO_CONFIG.ankiEnabled) return null;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "anki-btn";
+    button.disabled = deckWords.has(item.word);
+    button.dataset.word = item.word;
+    button.dataset.pinyin = entry.pinyin;
+    button.dataset.defs = encodeBase64Utf8(definitionsHTML);
+    button.dataset.segmentedsubs = JSON.stringify(
+      segmentedSubs[selectedSubIndex] ?? {
+        text: currentSentence,
+        start: video.currentTime,
+        end: video.currentTime,
+      },
+    );
+    button.textContent = button.disabled ? "✓" : "+";
+    button.setAttribute("aria-label", `Add ${item.word} to Anki`);
+    button.addEventListener("click", () => {
+      window.addToAnkiFromVideo(button, window.MOGAO_CONFIG.videoId);
+    });
+    return button;
+  },
+});
+
 function timeToSeconds(t) {
   const [h, m, s] = t.replace(",", ".").split(":");
   return +h * 3600 + +m * 60 + +s;
@@ -195,6 +222,7 @@ if (window.MOGAO_CONFIG.hasSubtitles) {
 }
 
 function closePopup() {
+  dictionaryPopupRenderer.reset();
   resetUI({ keepSpacer: false });
   overlay.classList.remove("popup-open");
   const transcriptWasPopupOpen =
@@ -307,66 +335,22 @@ function lookupSubtitle(e) {
   }
 
   resetUI({ keepSpacer: true });
-  popBody.innerHTML =
-    '<div style="padding:30px;text-align:center;color:#999;">Searching...</div>';
+  popBody.replaceChildren();
+  const searching = document.createElement("div");
+  searching.className = "dictionary-message";
+  searching.textContent = "Searching...";
+  popBody.appendChild(searching);
   popup.classList.add("visible");
   overlay.classList.add("popup-open");
   transcriptPanel?.classList.add("popup-open");
   scrollTranscriptLineIntoPosition(transcriptLine, "auto");
 
   const results = performLookup(textChunk);
-  popBody.innerHTML = "";
 
-  if (results && results.length > 0) {
+  if (results.length > 0) {
     highlightRange(startNode, startOffset, results[0].length);
-    results.forEach((item) => {
-      const div = document.createElement("div");
-      div.className = "result-item";
-      let html = "";
-      item.entries.forEach((entry) => {
-        const isLlm = item.llm ?? false;
-        const freqHtml = isLlm
-          ? `<span class="freq-badge llm-badge">LLM</span>`
-          : item.frequency
-            ? `<span class="freq-badge">#${item.frequency}</span>`
-            : "";
-        const encodedDefs = btoa(
-          unescape(
-            encodeURIComponent(
-              `<ul>${entry.definitions.map((d) => `<li>${d}</li>`).join("")}</ul>`,
-            ),
-          ),
-        );
-        const stringifiedSubsSegment = JSON.stringify(
-          segmentedSubs[selectedSubIndex],
-        ).replace(/"/g, "&quot;");
-        let ankiBtn = "";
-        if (window.MOGAO_CONFIG.ankiEnabled) {
-          ankiBtn = `<button class="anki-btn"
-            ${deckWords.has(item.word) ? "disabled" : ""}
-            data-word="${item.word}"
-            data-pinyin="${entry.pinyin}"
-            data-defs="${encodedDefs}"
-            data-segmentedsubs="${stringifiedSubsSegment}"
-            onclick="addToAnkiFromVideo(this, '${window.MOGAO_CONFIG.videoId}')">
-            ${deckWords.has(item.word) ? "✓" : "+"}
-          </button>`;
-        }
-        html += `<div class="result-head">
-              <span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}
-            </div>
-            <div class="entry-block">
-              <div class="entry-pinyin">${entry.pinyin}</div>
-              <ul class="entry-defs">${entry.definitions.map((d) => `<li>${d}</li>`).join("")}</ul>
-            </div>`;
-      });
-      div.innerHTML = html;
-      popBody.appendChild(div);
-    });
-  } else {
-    popBody.innerHTML =
-      '<div style="padding:30px;text-align:center;color:#999;">No definition found.</div>';
   }
+  dictionaryPopupRenderer.show(results);
 }
 
 overlay.addEventListener("click", lookupSubtitle);

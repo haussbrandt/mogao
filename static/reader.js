@@ -8,7 +8,28 @@ let currentHighlightSpans = [];
 let currentSentence = "";
 let isAutoScrolling = false;
 
+const dictionaryPopupRenderer = createDictionaryPopupRenderer(popBody, {
+  createEntryAction({ item, entry, definitionsHTML }) {
+    if (!window.MOGAO_CONFIG.ankiEnabled) return null;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "anki-btn";
+    button.disabled = deckWords.has(item.word);
+    button.dataset.word = item.word;
+    button.dataset.pinyin = entry.pinyin;
+    button.dataset.defs = encodeBase64Utf8(definitionsHTML);
+    button.textContent = button.disabled ? "✓" : "+";
+    button.setAttribute("aria-label", `Add ${item.word} to Anki`);
+    button.addEventListener("click", () => {
+      window.addToAnki(button, window.MOGAO_CONFIG.bookId);
+    });
+    return button;
+  },
+});
+
 function closePopup() {
+  dictionaryPopupRenderer.reset();
   resetUI({ keepSpacer: false });
 }
 
@@ -111,62 +132,19 @@ bookContent.addEventListener("click", async function (e) {
 
   resetUI({ keepSpacer: true });
   contentContainer.classList.add("has-popup");
-  popBody.innerHTML =
-    '<div style="padding:30px; text-align:center; color:#999;">Searching...</div>';
+  popBody.replaceChildren();
+  const searching = document.createElement("div");
+  searching.className = "dictionary-message";
+  searching.textContent = "Searching...";
+  popBody.appendChild(searching);
   popup.classList.add("visible");
 
   const results = performLookup(textChunk);
 
-  popBody.innerHTML = "";
-  if (results && results.length > 0) {
+  if (results.length > 0) {
     const longest = results[0];
     highlightRange(startNode, startOffset, longest.length);
     adjustScroll();
-    results.forEach((item) => {
-      const div = document.createElement("div");
-      div.className = "result-item";
-
-      let html = "";
-      item.entries.forEach((entry) => {
-        const isLlm = item.llm ?? false;
-        let freqHtml;
-        if (isLlm) {
-          freqHtml = `<span class="freq-badge llm-badge">LLM</span>`;
-        } else {
-          freqHtml = item.frequency
-            ? `<span class="freq-badge">#${item.frequency}</span>`
-            : "";
-        }
-        let definitionsHTML = `<ul>`;
-        definitionsHTML += entry.definitions
-          .map((d) => `<li>${d}</li>`)
-          .join("");
-        definitionsHTML += `</ul>`;
-
-        const encodedDefinitions = btoa(
-          unescape(encodeURIComponent(definitionsHTML)),
-        );
-        let ankiBtn = "";
-        if (window.MOGAO_CONFIG.ankiEnabled) {
-          ankiBtn = `<button
-            class="anki-btn"
-            ${deckWords.has(item.word) ? "disabled" : ""}
-            data-word="${item.word}"
-            data-pinyin="${entry.pinyin}"
-            data-defs="${encodedDefinitions}"
-            onclick="addToAnki(this, '${window.MOGAO_CONFIG.bookId}')">
-            ${deckWords.has(item.word) ? "✓" : "+"}
-          </button>`;
-        }
-        html += `<div class="result-head"><span class="word-main">${item.word}</span>${freqHtml}${ankiBtn}</div>`;
-        let defsHtml = entry.definitions.map((d) => `<li>${d}</li>`).join("");
-        html += `<div class="entry-block"><div class="entry-pinyin">${entry.pinyin}</div><ul class="entry-defs">${defsHtml}</ul></div>`;
-      });
-      div.innerHTML = html;
-      popBody.appendChild(div);
-    });
-  } else {
-    popBody.innerHTML =
-      '<div style="padding:30px; text-align:center; color:#999;">No definition found.</div>';
   }
+  dictionaryPopupRenderer.show(results);
 });

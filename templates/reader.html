@@ -12,7 +12,7 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='shared.css') }}?v=11"
+      href="{{ url_for('static', path='shared.css') }}?v=13"
     />
     <link
       rel="stylesheet"
@@ -131,12 +131,12 @@
     <script src="{{ url_for('static', path='progress.js') }}?v=2"></script>
     <script src="{{ url_for('static', path='textprocessor.js') }}?v=2"></script>
     {% if anki_enabled %}
-      <script src="{{ url_for('static', path='anki.js') }}?v=4"></script>
+      <script src="{{ url_for('static', path='anki.js') }}?v=5"></script>
     {% endif %}
     <script src="{{ url_for('static', path='stats.js') }}?v=2"></script>
     <script src="{{ url_for('static', path='segmenter.js') }}?v=3"></script>
-    <script src="{{ url_for('static', path='dictionary.js') }}?v=4"></script>
+    <script src="{{ url_for('static', path='dictionary.js') }}?v=6"></script>
     <script src="{{ url_for('static', path='book_dict.js') }}"></script>
-    <script src="{{ url_for('static', path='reader.js') }}"></script>
+    <script src="{{ url_for('static', path='reader.js') }}?v=2"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 [project]
 name = "mogao"
-version = "1.25.0"
+version = "1.26.0"
 description = "A mobile-first EPUB reader and video player for Chinese learners with instant dictionary lookups and Anki flashcard creation"
 readme = "README.md"
 requires-python = ">=3.12"
