@@ -5,9 +5,9 @@ import pickle
 from functools import lru_cache
 from typing import Optional
 
-from book import Book
-from config import settings
-from constants import normalize_uuid
+from books.book import Book
+from core.config import settings
+from core.constants import normalize_uuid
 
 
 logger = logging.getLogger(__name__)

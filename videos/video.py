@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from config import settings
-from constants import normalize_uuid
+from core.config import settings
+from core.constants import normalize_uuid
 
 
 @dataclass

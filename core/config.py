@@ -9,7 +9,8 @@ from pydantic import (
     model_validator,
 )
 
-CONFIG_PATH = Path(__file__).with_name("config.toml")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_ROOT / "config.toml"
 
 
 class SettingsModel(BaseModel):

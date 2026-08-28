@@ -16,14 +16,14 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, Up
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
-from anki import call_anki, get_all_words_from_anki_deck
-from config import settings
-from constants import normalize_uuid
-from dependencies import postprocessor, templates
-from llm_processor import load_video_dict, process_subtitles_background
-from temp_files import new_temp_path
-from video import Video, cut_audio, generate_video, take_screenshot
-from video_library import (
+from core.config import settings
+from core.constants import normalize_uuid
+from core.dependencies import postprocessor, templates
+from core.temp_files import new_temp_path
+from integrations.anki import call_anki, get_all_words_from_anki_deck
+from integrations.llm_processor import load_video_dict, process_subtitles_background
+from videos.video import Video, cut_audio, generate_video, take_screenshot
+from videos.video_library import (
     get_video_progress_path,
     load_video_cached,
     load_video_progress,

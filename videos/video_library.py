@@ -5,9 +5,9 @@ import pickle
 from functools import lru_cache
 from typing import Optional
 
-from config import settings
-from constants import normalize_uuid
-from video import Video
+from core.config import settings
+from core.constants import normalize_uuid
+from videos.video import Video
 
 
 logger = logging.getLogger(__name__)

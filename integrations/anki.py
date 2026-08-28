@@ -11,8 +11,8 @@ import ffmpeg
 import requests
 from elevenlabs.client import ElevenLabs
 
-from config import settings
-from llm_client import LLMResponseError, generate_json
+from core.config import settings
+from integrations.llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from dotenv import load_dotenv
 
-from logging_config import configure_logging
+from core.logging_config import configure_logging
 
 load_dotenv()
 configure_logging()
@@ -19,18 +19,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import video_router
-from anki import (
-    call_anki,
-    ensure_anki_available,
-    get_all_words_from_anki_deck,
-    validate_anki_configuration,
-)
-from book import generate_book
-from config import settings
-from constants import normalize_uuid
-from dependencies import postprocessor, templates
-from library import (
+from books.book import generate_book
+from books.library import (
     get_progress_path,
     load_book_cached,
     load_progress,
@@ -38,13 +28,23 @@ from library import (
     save_progress,
     save_settings,
 )
-from llm_processor import (
+from core.config import settings
+from core.constants import normalize_uuid
+from core.dependencies import postprocessor, templates
+from core.middleware import AuthMiddleware
+from core.temp_files import new_temp_path
+from integrations.anki import (
+    call_anki,
+    ensure_anki_available,
+    get_all_words_from_anki_deck,
+    validate_anki_configuration,
+)
+from integrations.llm_processor import (
     load_book_dict,
     process_book_background,
     resume_interrupted_processing,
 )
-from middleware import AuthMiddleware
-from temp_files import new_temp_path
+from videos import video_router
 
 logger = logging.getLogger(__name__)
 

@@ -7,9 +7,9 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from config import settings
-from constants import normalize_uuid
-from llm_client import LLMResponseError, generate_json
+from core.config import settings
+from core.constants import normalize_uuid
+from integrations.llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
 

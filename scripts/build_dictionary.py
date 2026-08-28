@@ -15,10 +15,10 @@ import zipfile
 from collections import defaultdict
 from pathlib import Path
 
-from logging_config import configure_logging
+from core.logging_config import configure_logging
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = PROJECT_ROOT / "static" / "dict.json"
 
 # CC-CEDICT's verified MDBG download forbids scripted access. The project

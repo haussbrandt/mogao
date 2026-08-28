@@ -94,16 +94,16 @@ Mogao includes a ready-to-use popup dictionary based on
 You can rebuild `static/dict.json` from the latest sources using:
 
 ```shell
-uv run build_dictionary.py
+uv run python -m scripts.build_dictionary
 ```
 
 The builder downloads the source data, converts the frequency counts to
 comparable ranks and generates a single dictionary file. It can also use local
-or alternative sources. Run `uv run build_dictionary.py --help` for all
+or alternative sources. Run `uv run python -m scripts.build_dictionary --help` for all
 options. For example:
 
 ```shell
-uv run build_dictionary.py \
+uv run python -m scripts.build_dictionary \
   --cedict path/to/cedict_ts.u8 \
   --without-bcc \
   --without-subtlex \

@@ -34,7 +34,7 @@ def add_colored_tag(record: logging.LogRecord, use_colors: bool) -> logging.LogR
     """Copy a log record and add its exact logger name as a colored tag."""
     record_copy = copy(record)
     tag = record.name
-    color = TAG_COLORS.get(tag)
+    color = TAG_COLORS.get(tag) or TAG_COLORS.get(tag.rsplit(".", 1)[-1])
     if use_colors and color:
         tag = f"{color}{tag}{ANSI_RESET}"
     record_copy.__dict__["tag"] = tag

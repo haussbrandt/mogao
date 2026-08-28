@@ -16,7 +16,7 @@ import nh3
 from bs4 import BeautifulSoup
 from ebooklib import epub
 
-from config import settings
+from core.config import settings
 
 UNSAFE_LINK_SCHEMES = {"data", "javascript", "vbscript"}
 
