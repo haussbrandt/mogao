@@ -21,7 +21,6 @@ from pydantic import BaseModel
 
 from books.book import generate_book
 from books.library import (
-    get_progress_path,
     load_book_cached,
     load_progress,
     load_settings,
@@ -29,10 +28,9 @@ from books.library import (
     save_settings,
 )
 from core.config import settings
-from core.constants import normalize_uuid
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
-from core.temp_files import new_temp_path
+from core.paths import get_book_path, get_book_progress_path, unique_temp_path
 from integrations.anki import (
     call_anki,
     ensure_anki_available,
@@ -225,7 +223,11 @@ async def library_view(request: Request):
 
     if os.path.exists(settings.paths.library):
         for item in os.listdir(settings.paths.library):
-            if os.path.isdir(os.path.join(settings.paths.library, item)):
+            try:
+                book_path = get_book_path(item)
+            except ValueError:
+                continue
+            if os.path.isdir(book_path):
                 book = load_book_cached(item)
                 if not book:
                     continue
@@ -236,7 +238,7 @@ async def library_view(request: Request):
                         "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
                     ).json()["result"]
 
-                progress_path = get_progress_path(item)
+                progress_path = get_book_progress_path(item)
                 last_read_time = (
                     os.path.getmtime(progress_path)
                     if os.path.exists(progress_path)
@@ -246,9 +248,7 @@ async def library_view(request: Request):
                 cover_image = os.path.basename(
                     getattr(book, "cover_image", None) or ""
                 )
-                cover_path = os.path.join(
-                    settings.paths.library, item, "images", cover_image
-                )
+                cover_path = get_book_path(item, "images", cover_image)
                 cover_url = (
                     f"/read/{item}/images/{cover_image}"
                     if cover_image and os.path.isfile(cover_path)
@@ -297,7 +297,7 @@ async def upload_book(files: list[UploadFile] = File(...)):
             raise HTTPException(status_code=400, detail="Only .epub files are allowed")
 
         # Save uploaded file temporarily
-        temp_filename = new_temp_path(".epub")
+        temp_filename = unique_temp_path(".epub")
         try:
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
@@ -324,15 +324,15 @@ async def delete_book(book_id: UUID):
     """
     Deletes a book folder and refreshes the cache.
     """
-    safe_id = normalize_uuid(book_id)
-    book_path = os.path.join(settings.paths.library, safe_id)
+    book_id_string = str(book_id)
+    book_path = get_book_path(book_id)
 
     if os.path.exists(book_path):
         try:
             shutil.rmtree(book_path)
             load_book_cached.cache_clear()
         except Exception:
-            logger.exception(f"Error deleting book {safe_id}")
+            logger.exception(f"Error deleting book {book_id_string}")
             raise HTTPException(status_code=500, detail="Failed to delete book")
     else:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -343,30 +343,30 @@ async def delete_book(book_id: UUID):
 @app.get("/read/{book_id}", response_class=HTMLResponse)
 async def redirect_to_last_read(book_id: UUID):
     """Helper to go to the last read chapter."""
-    safe_id = normalize_uuid(book_id)
-    progress = load_progress(safe_id)
+    book_id_string = str(book_id)
+    progress = load_progress(book_id_string)
     last_chapter_index = progress.get("chapter_index", 0)
-    return RedirectResponse(url=f"/read/{safe_id}/{last_chapter_index}")
+    return RedirectResponse(url=f"/read/{book_id_string}/{last_chapter_index}")
 
 
 @app.get("/read/{book_id}/{chapter_index}", response_class=HTMLResponse)
 async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     """The main reader interface."""
-    safe_id = normalize_uuid(book_id)
-    book = load_book_cached(safe_id)
+    book_id_string = str(book_id)
+    book = load_book_cached(book_id_string)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
     if chapter_index < 0 or chapter_index >= len(book.spine):
         raise HTTPException(status_code=404, detail="Chapter not found")
 
-    progress = load_progress(safe_id)
+    progress = load_progress(book_id_string)
     saved_chapter = progress.get("chapter_index", -1)
     initial_scroll_percentage = 0.0
     if saved_chapter == chapter_index:
         initial_scroll_percentage = progress.get("scroll_percentage", 0.0)
 
-    save_progress(safe_id, chapter_index, initial_scroll_percentage)
+    save_progress(book_id_string, chapter_index, initial_scroll_percentage)
 
     current_chapter = book.spine[chapter_index]
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
@@ -385,7 +385,7 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
             "book": book,
             "current_chapter": current_chapter,
             "chapter_index": chapter_index,
-            "book_id": safe_id,
+            "book_id": book_id_string,
             "prev_idx": prev_idx,
             "next_idx": next_idx,
             "initial_scroll_percentage": initial_scroll_percentage,
@@ -402,12 +402,8 @@ async def serve_image(book_id: UUID, image_name: str):
     The HTML contains <img src="images/pic.jpg">.
     The browser resolves this to /read/{book_id}/images/pic.jpg.
     """
-    safe_book_id = normalize_uuid(book_id)
     safe_image_name = os.path.basename(image_name)
-
-    img_path = os.path.join(
-        settings.paths.library, safe_book_id, "images", safe_image_name
-    )
+    img_path = get_book_path(book_id, "images", safe_image_name)
 
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="Image not found")

@@ -8,8 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from core.config import settings
-from core.constants import normalize_uuid
+from core.paths import get_video_path, unique_temp_path
 
 
 @dataclass
@@ -35,7 +34,7 @@ class Video:
     cover_image: str | None = None
 
 
-def probe_video_codec(path: str) -> str:
+def probe_video_codec(path: str | os.PathLike[str]) -> str:
     result = subprocess.run(
         [
             "ffprobe",
@@ -56,7 +55,7 @@ def probe_video_codec(path: str) -> str:
     return result.stdout.strip()
 
 
-def probe_audio_codec(path: str) -> str:
+def probe_audio_codec(path: str | os.PathLike[str]) -> str:
     result = subprocess.run(
         [
             "ffprobe",
@@ -77,7 +76,9 @@ def probe_audio_codec(path: str) -> str:
     return result.stdout.strip()
 
 
-def generate_video(path, original_filename) -> tuple[Video, Path]:
+def generate_video(
+    path: str | os.PathLike[str], original_filename: str
+) -> tuple[Video, Path]:
     cmd = [
         "ffprobe",
         "-v",
@@ -99,8 +100,10 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
 
     metadata = Metadata(original_filename, duration_ts, duration, file_size)
     unique_key = metadata.generate_key()
-    os.makedirs(settings.paths.video_library, exist_ok=True)
-    output_dir = settings.paths.video_library / str(unique_key)
+    output_dir = get_video_path(unique_key)
+    video_output_path = get_video_path(unique_key, "video.mp4")
+    cover_output_path = get_video_path(unique_key, "cover.jpg")
+    metadata_output_path = get_video_path(unique_key, "video.pkl")
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir)
@@ -119,7 +122,7 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
             "-movflags",
             "+faststart",
             "-y",
-            f"{output_dir}/video.mp4",
+            video_output_path,
         ]
     else:
         # Re-encode to H.264
@@ -142,7 +145,7 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
             "-movflags",
             "+faststart",
             "-y",
-            f"{output_dir}/video.mp4",
+            video_output_path,
         ]
     subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
     os.remove(path)
@@ -153,12 +156,12 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
         "-ss",
         "00:00:05",
         "-i",
-        f"{output_dir}/video.mp4",
+        video_output_path,
         "-vframes",
         "1",
         "-q:v",
         "2",
-        f"{output_dir}/cover.jpg",
+        cover_output_path,
     ]
 
     subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -169,18 +172,15 @@ def generate_video(path, original_filename) -> tuple[Video, Path]:
         cover_image=f"cover.jpg",
     )
 
-    p_path = os.path.join(output_dir, "video.pkl")
-    with open(p_path, "wb") as f:
+    with open(metadata_output_path, "wb") as f:
         pickle.dump(processed_video, f)
 
     return processed_video, output_dir
 
 
-def take_screenshot(video_id, timestamp):
-    safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(settings.paths.video_library, safe_id, "video.mp4")
-    output_path = f"/tmp/mogao/{uuid.uuid4()}.jpg"
-    os.makedirs("/tmp/mogao", exist_ok=True)
+def take_screenshot(video_id: str | uuid.UUID, timestamp: float) -> Path:
+    video_path = get_video_path(video_id, "video.mp4")
+    output_path = unique_temp_path(".jpg")
     cmd = [
         "ffmpeg",
         "-ss",
@@ -200,12 +200,10 @@ def take_screenshot(video_id, timestamp):
     return output_path
 
 
-def cut_audio(video_id, start, end):
-    safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(settings.paths.video_library, safe_id, "video.mp4")
-    output_path = f"/tmp/mogao/{uuid.uuid4()}.aac"
+def cut_audio(video_id: str | uuid.UUID, start: float, end: float) -> Path:
+    video_path = get_video_path(video_id, "video.mp4")
+    output_path = unique_temp_path(".aac")
     duration = end - start
-    os.makedirs("/tmp/mogao", exist_ok=True)
     cmd = [
         "ffmpeg",
         "-ss",

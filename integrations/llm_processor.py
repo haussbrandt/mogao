@@ -8,7 +8,12 @@ from datetime import datetime
 from typing import Optional
 
 from core.config import settings
-from core.constants import normalize_uuid
+from core.paths import (
+    get_book_dict_path,
+    get_book_path,
+    get_video_dict_path,
+    get_video_path,
+)
 from integrations.llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
@@ -30,11 +35,6 @@ def _get_rate_lock() -> asyncio.Lock:
     return _rate_lock
 
 
-def get_book_dict_path(book_id: str) -> str:
-    safe_id = normalize_uuid(book_id)
-    return os.path.join(settings.paths.library, safe_id, "book_dict.json")
-
-
 def load_book_dict(book_id: str) -> dict:
     """Load book_dict.json, returning a safe default if missing/corrupt."""
     path = get_book_dict_path(book_id)
@@ -51,11 +51,6 @@ def _save_book_dict(book_id: str, data: dict) -> None:
     path = get_book_dict_path(book_id)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-
-
-def get_video_dict_path(video_id: str) -> str:
-    safe_id = normalize_uuid(video_id)
-    return os.path.join(settings.paths.video_library, safe_id, "subtitles_dict.json")
 
 
 def load_video_dict(video_id: str) -> dict:
@@ -394,10 +389,7 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
     model_name = settings.dictionary_generation.llm
     base_url = settings.dictionary_generation.base_url
 
-    safe_id = normalize_uuid(video_id)
-    subtitles_path = os.path.join(
-        settings.paths.video_library, safe_id, "subtitles.srt"
-    )
+    subtitles_path = get_video_path(video_id, "subtitles.srt")
     if not os.path.exists(subtitles_path):
         return
 
@@ -519,9 +511,13 @@ async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
     # TODO: Refactor
     try:
         for book_id in os.listdir(settings.paths.library):
-            if not os.path.isdir(settings.paths.library / book_id):
+            try:
+                book_path = get_book_path(book_id)
+            except ValueError:
                 continue
-            pkl_path = os.path.join(settings.paths.library, book_id, "book.pkl")
+            if not os.path.isdir(book_path):
+                continue
+            pkl_path = get_book_path(book_id, "book.pkl")
             if not os.path.exists(pkl_path):
                 continue
             dict_path = get_book_dict_path(book_id)
@@ -546,7 +542,11 @@ async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
 
     try:
         for video_id in os.listdir(settings.paths.video_library):
-            if not os.path.isdir(settings.paths.video_library / video_id):
+            try:
+                video_path = get_video_path(video_id)
+            except ValueError:
+                continue
+            if not os.path.isdir(video_path):
                 continue
             dict_path = get_video_dict_path(video_id)
             try:

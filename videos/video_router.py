@@ -17,14 +17,12 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import BaseModel
 
 from core.config import settings
-from core.constants import normalize_uuid
 from core.dependencies import postprocessor, templates
-from core.temp_files import new_temp_path
+from core.paths import get_video_path, get_video_progress_path, unique_temp_path
 from integrations.anki import call_anki, get_all_words_from_anki_deck
 from integrations.llm_processor import load_video_dict, process_subtitles_background
 from videos.video import Video, cut_audio, generate_video, take_screenshot
 from videos.video_library import (
-    get_video_progress_path,
     load_video_cached,
     load_video_progress,
     load_video_settings,
@@ -113,7 +111,7 @@ def process_chunked_video(path: str, original_filename: str, upload_id: UUID):
         write_processing_status(
             upload_id,
             "complete",
-            video_id=os.path.basename(output_dir),
+            video_id=output_dir.name,
         )
     except Exception as error:
         logger.exception(f"Error processing chunked video upload {upload_id}")
@@ -137,10 +135,12 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
     if not settings.anki.enabled:
         raise HTTPException(status_code=503, detail="Anki integration is disabled")
 
-    video_id = normalize_uuid(data.book_id)
-    audio_path = cut_audio(video_id, data.start, data.end)
-    screenshot_path = take_screenshot(video_id, data.start)
-    tags = [settings.anki.tags.app, f"{settings.anki.tags.app}-{video_id}"]
+    video_id_string = str(data.book_id)
+    audio_path = cut_audio(video_id_string, data.start, data.end)
+    screenshot_path = take_screenshot(video_id_string, data.start)
+    audio_path_string = str(audio_path)
+    screenshot_path_string = str(screenshot_path)
+    tags = [settings.anki.tags.app, f"{settings.anki.tags.app}-{video_id_string}"]
     if settings.postprocessing.text.enabled:
         tags.append(settings.anki.tags.needs_processing)
 
@@ -155,15 +155,15 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
         },
         "audio": [
             {
-                "path": audio_path,
-                "filename": audio_path,
+                "path": audio_path_string,
+                "filename": audio_path_string,
                 "fields": [settings.anki.fields.sentence_audio],
             },
         ],
         "picture": [
             {
-                "path": screenshot_path,
-                "filename": screenshot_path,
+                "path": screenshot_path_string,
+                "filename": screenshot_path_string,
                 "fields": [settings.anki.fields.sentence_image],
             }
         ],
@@ -197,7 +197,7 @@ async def upload_video(
     """
     for file in files:
         original_filename, extension = validate_video_filename(file.filename or "")
-        temp_filename = new_temp_path(extension)
+        temp_filename = unique_temp_path(extension)
         try:
             with open(temp_filename, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
@@ -298,7 +298,7 @@ async def complete_chunk_upload(upload_id: UUID, background_tasks: BackgroundTas
         if os.path.getsize(assembled_path) != metadata["size"]:
             raise HTTPException(status_code=409, detail="Upload is incomplete")
 
-        temp_filename = f"temp_{uuid.uuid4()}{metadata['extension']}"
+        temp_filename = unique_temp_path(metadata["extension"])
         shutil.move(assembled_path, temp_filename)
     except HTTPException:
         if os.path.exists(assembled_path):
@@ -349,36 +349,40 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
             status_code=400,
             detail=f"Only subtitle files are allowed: {ALLOWED_SUBTITLE_EXTENSIONS}",
         )
-    temp_filename = new_temp_path(extension)
-    safe_id = normalize_uuid(video_id)
-    output_dir = os.path.join(settings.paths.video_library, safe_id)
+    temp_filename = unique_temp_path(extension)
+    video_id_string = str(video_id)
+    output_dir = get_video_path(video_id)
+    subtitles_path = get_video_path(video_id, "subtitles.srt")
+    metadata_path = get_video_path(video_id, "video.pkl")
     if not os.path.exists(output_dir):
-        logger.warning(f"Cannot upload subtitles: video {safe_id} was not found")
+        logger.warning(
+            f"Cannot upload subtitles: video {video_id_string} was not found"
+        )
         raise HTTPException(status_code=404, detail="Video not found")
     try:
         with open(temp_filename, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        shutil.move(temp_filename, f"{output_dir}/subtitles.srt")
+        shutil.move(temp_filename, subtitles_path)
     except Exception:
-        logger.exception(f"Error processing subtitles for video {safe_id}")
+        logger.exception(f"Error processing subtitles for video {video_id_string}")
         raise HTTPException(status_code=500, detail="Failed to process subtitles")
     finally:
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
-    with open(f"{output_dir}/subtitles.srt") as f:
+    with open(subtitles_path) as f:
         subtitles = f.read()
         character_count = sum(1 for c in subtitles if "\u4e00" <= c <= "\u9fff")
 
-    with open(f"{output_dir}/video.pkl", "rb") as v:
+    with open(metadata_path, "rb") as v:
         video_pickle: Video = pickle.load(v)
     video_pickle.character_count = character_count
-    with open(f"{output_dir}/video.pkl", "wb") as v:
+    with open(metadata_path, "wb") as v:
         pickle.dump(video_pickle, v)
     load_video_cached.cache_clear()
 
     if settings.dictionary_generation.enabled:
-        asyncio.create_task(process_subtitles_background(safe_id))
+        asyncio.create_task(process_subtitles_background(video_id_string))
 
     return RedirectResponse(url=f"{VIDEO_BASE_PATH}/", status_code=303)
 
@@ -416,7 +420,7 @@ def pick_best_subtitle(temp_filename: str | os.PathLike[str]) -> str | None:
 
 # TODO: refactor
 async def download_and_process(url: str):
-    temp_filename = new_temp_path(".mp4")
+    temp_filename = unique_temp_path(".mp4")
     try:
         result = subprocess.run(
             [
@@ -452,23 +456,24 @@ async def download_and_process(url: str):
     best_subitle_path = pick_best_subtitle(temp_filename)
     _, output_dir = generate_video(temp_filename, original_title)
     if best_subitle_path is not None:
-        shutil.move(best_subitle_path, f"{output_dir}/subtitles.srt")
+        video_id = output_dir.name
+        subtitles_path = get_video_path(video_id, "subtitles.srt")
+        metadata_path = get_video_path(video_id, "video.pkl")
+        shutil.move(best_subitle_path, subtitles_path)
 
-        with open(f"{output_dir}/subtitles.srt") as f:
+        with open(subtitles_path) as f:
             subtitles = f.read()
             character_count = sum(1 for c in subtitles if "\u4e00" <= c <= "\u9fff")
 
-        with open(f"{output_dir}/video.pkl", "rb") as v:
+        with open(metadata_path, "rb") as v:
             video_pickle: Video = pickle.load(v)
         video_pickle.character_count = character_count
-        with open(f"{output_dir}/video.pkl", "wb") as v:
+        with open(metadata_path, "wb") as v:
             pickle.dump(video_pickle, v)
         load_video_cached.cache_clear()
 
         if settings.dictionary_generation.enabled:
-            asyncio.create_task(
-                process_subtitles_background(os.path.basename(output_dir))
-            )
+            asyncio.create_task(process_subtitles_background(video_id))
 
 
 class DownloadRequest(BaseModel):
@@ -489,9 +494,7 @@ async def serve_thumbnail(video_id: UUID):
     """
     Serves the video thumbnail.
     """
-    safe_video_id = normalize_uuid(video_id)
-
-    img_path = os.path.join(settings.paths.video_library, safe_video_id, "cover.jpg")
+    img_path = get_video_path(video_id, "cover.jpg")
 
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="Image not found")
@@ -504,15 +507,15 @@ async def delete_video(video_id: UUID):
     """
     Deletes a video folder and refreshes the cache.
     """
-    safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(settings.paths.video_library, safe_id)
+    video_id_string = str(video_id)
+    video_path = get_video_path(video_id)
 
     if os.path.exists(video_path):
         try:
             shutil.rmtree(video_path)
             load_video_cached.cache_clear()
         except Exception:
-            logger.exception(f"Error deleting video {safe_id}")
+            logger.exception(f"Error deleting video {video_id_string}")
             raise HTTPException(status_code=500, detail="Failed to delete video")
     else:
         raise HTTPException(status_code=404, detail="video not found")
@@ -534,20 +537,18 @@ async def save_video_progress_api(data: VideoProgressRequest):
 @router.get("/watch/{video_id}", response_class=HTMLResponse)
 async def watch_video(request: Request, video_id: UUID):
     """The main video player interface."""
-    safe_id = normalize_uuid(video_id)
-    video = load_video_cached(safe_id)
+    video_id_string = str(video_id)
+    video = load_video_cached(video_id_string)
     if not video:
         raise HTTPException(status_code=404, detail="video not found")
 
     # TODO: refactor
-    subtitles_path = os.path.join(
-        settings.paths.video_library, safe_id, "subtitles.srt"
-    )
+    subtitles_path = get_video_path(video_id, "subtitles.srt")
     has_subtitles = os.path.exists(subtitles_path)
 
-    progress = load_video_progress(safe_id)
+    progress = load_video_progress(video_id_string)
     seconds_since_start = progress.get("seconds_since_start", 0)
-    save_video_progress(safe_id, seconds_since_start)
+    save_video_progress(video_id_string, seconds_since_start)
 
     deck_words = set()
     if settings.anki.enabled:
@@ -561,7 +562,7 @@ async def watch_video(request: Request, video_id: UUID):
         {
             "request": request,
             "video": video,
-            "video_id": safe_id,
+            "video_id": video_id_string,
             "initial_playback_time": seconds_since_start,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
@@ -573,8 +574,7 @@ async def watch_video(request: Request, video_id: UUID):
 
 @router.get("/stream/{video_id}")
 def stream_video(video_id: UUID):
-    safe_id = normalize_uuid(video_id)
-    video_path = os.path.join(settings.paths.video_library, safe_id, "video.mp4")
+    video_path = get_video_path(video_id, "video.mp4")
 
     if os.path.exists(video_path):
         return FileResponse(video_path, media_type="video/mp4")
@@ -584,8 +584,7 @@ def stream_video(video_id: UUID):
 
 @router.get("/{video_id}/subtitles")
 def get_subtitles(video_id: UUID):
-    safe_id = normalize_uuid(video_id)
-    subtitle_path = os.path.join(settings.paths.video_library, safe_id, "subtitles.srt")
+    subtitle_path = get_video_path(video_id, "subtitles.srt")
 
     if os.path.exists(subtitle_path):
         return FileResponse(subtitle_path, media_type="text/plain")
@@ -618,7 +617,11 @@ async def video_library_view(request: Request):
 
     if os.path.exists(settings.paths.video_library):
         for item in os.listdir(settings.paths.video_library):
-            if os.path.isdir(os.path.join(settings.paths.video_library, item)):
+            try:
+                video_path = get_video_path(item)
+            except ValueError:
+                continue
+            if os.path.isdir(video_path):
                 video = load_video_cached(item)
                 if not video:
                     continue

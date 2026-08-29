@@ -6,8 +6,11 @@ from functools import lru_cache
 from typing import Optional
 
 from books.book import Book
-from core.config import settings
-from core.constants import normalize_uuid
+from core.paths import (
+    get_book_path,
+    get_book_progress_path,
+    get_book_settings_path,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -20,10 +23,9 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
     Cached so we don't re-read the disk on every click.
     """
     try:
-        safe_id = normalize_uuid(folder_name)
+        file_path = get_book_path(folder_name, "book.pkl")
     except ValueError:
         return None
-    file_path = os.path.join(settings.paths.library, safe_id, "book.pkl")
     if not os.path.exists(file_path):
         return None
 
@@ -36,16 +38,10 @@ def load_book_cached(folder_name: str) -> Optional[Book]:
         return None
 
 
-def get_progress_path(book_id: str) -> str:
-    """Returns the path to the progress.json file for a given book."""
-    safe_id = normalize_uuid(book_id)
-    return os.path.join(settings.paths.library, safe_id, "progress.json")
-
-
 def save_progress(book_id: str, chapter_index: int, scroll_percentage: float = 0.0):
     """Saves the current reading progress to the book's progress file."""
     try:
-        path = get_progress_path(book_id)
+        path = get_book_progress_path(book_id)
         with open(path, "w") as f:
             json.dump(
                 {
@@ -63,7 +59,7 @@ def load_progress(book_id: str):
     # TODO: Create a class for this, so there is never a possible mismatch between save and load
     default_progress = {"chapter_index": 0, "scroll_percentage": 0.0}
     try:
-        path = get_progress_path(book_id)
+        path = get_book_progress_path(book_id)
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
@@ -72,13 +68,9 @@ def load_progress(book_id: str):
     return default_progress
 
 
-def get_settings_path() -> str:
-    return os.path.join(settings.paths.library, "settings.json")
-
-
 def load_settings() -> dict:
     try:
-        path = get_settings_path()
+        path = get_book_settings_path()
         if os.path.exists(path):
             with open(path, "r") as f:
                 return json.load(f)
@@ -89,7 +81,7 @@ def load_settings() -> dict:
 
 def save_settings(preferences: dict):
     try:
-        path = get_settings_path()
+        path = get_book_settings_path()
         with open(path, "w") as f:
             json.dump(preferences, f)
     except Exception:

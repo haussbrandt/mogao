@@ -12,6 +12,7 @@ import requests
 from elevenlabs.client import ElevenLabs
 
 from core.config import settings
+from core.paths import named_temp_path
 from integrations.llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
@@ -216,15 +217,16 @@ class Postprocessor:
                 ]
                 end_sec = response.alignment.character_end_times_seconds[end_index]
 
-                os.makedirs("/tmp/mogao", exist_ok=True)
-                with open(f"/tmp/mogao/{note_id}.mp3", "wb") as f:
+                sentence_audio_path = named_temp_path(f"{note_id}.mp3")
+                word_audio_path = named_temp_path(f"{source_word}.mp3")
+                with open(sentence_audio_path, "wb") as f:
                     f.write(base64.b64decode(audio64))
 
                 input_file = ffmpeg.input(
-                    f"/tmp/mogao/{note_id}.mp3", ss=start_sec, to=end_sec
+                    str(sentence_audio_path), ss=start_sec, to=end_sec
                 )
                 output = ffmpeg.output(
-                    input_file, f"/tmp/mogao/{source_word}.mp3"
+                    input_file, str(word_audio_path)
                 ).overwrite_output()
                 ffmpeg.run(output, quiet=True)
 
@@ -235,12 +237,12 @@ class Postprocessor:
                         "fields": {},
                         "audio": [
                             {
-                                "path": f"/tmp/mogao/{note_id}.mp3",
+                                "path": str(sentence_audio_path),
                                 "filename": f"{note_id}.mp3",
                                 "fields": [settings.anki.fields.sentence_audio],
                             },
                             {
-                                "path": f"/tmp/mogao/{source_word}.mp3",
+                                "path": str(word_audio_path),
                                 "filename": f"{source_word}.mp3",
                                 "fields": [settings.anki.fields.word_audio],
                             },
@@ -253,10 +255,10 @@ class Postprocessor:
                     tags=settings.anki.tags.needs_audio,
                 )
                 logger.info(f"Added audio to Anki note {note_id}")
-                if os.path.exists(f"/tmp/mogao/{source_word}.mp3"):
-                    os.remove(f"/tmp/mogao/{source_word}.mp3")
-                if os.path.exists(f"/tmp/mogao/{note_id}.mp3"):
-                    os.remove(f"/tmp/mogao/{note_id}.mp3")
+                if os.path.exists(word_audio_path):
+                    os.remove(word_audio_path)
+                if os.path.exists(sentence_audio_path):
+                    os.remove(sentence_audio_path)
             except Exception:
                 logger.exception(
                     f"Failed to add audio to Anki note {card.get('note', 'unknown')}"
