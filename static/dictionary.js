@@ -1,5 +1,7 @@
 let localDict = null;
 
+const GENERATED_DICTIONARY_POLL_INTERVAL_MS = 30_000;
+
 const CEDICT_REFERENCE_PATTERN =
   /([^\s()[\]{}"'“”‘’<>《》〈〉「」『』【】,;:]+)\[([^\]]+)\]/gu;
 
@@ -18,6 +20,70 @@ window.dictionaryReady = fetch("/static/dict.json?v=3")
     console.error("Failed to load dictionary", err);
     throw err;
   });
+
+function toGeneratedDictionaryEntry(raw) {
+  return {
+    f: 100,
+    e: (raw.e || []).map((entry) => ({
+      p: entry.p || "",
+      d: entry.d || [],
+    })),
+    llm: true,
+  };
+}
+
+function mergeGeneratedDictionaryWords(words) {
+  if (!localDict || !words) return 0;
+
+  let added = 0;
+  for (const [word, raw] of Object.entries(words)) {
+    if (!localDict[word]) {
+      localDict[word] = toGeneratedDictionaryEntry(raw);
+      added++;
+    }
+  }
+  return added;
+}
+
+async function fetchAndMergeGeneratedDictionary(url) {
+  let data = null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    data = await response.json();
+  } catch (error) {
+    console.warn("[dictionary] generated dictionary fetch error:", error);
+    return null;
+  }
+
+  const added = mergeGeneratedDictionaryWords(data.words);
+  if (added > 0 && typeof window.reannotateWithNewDict === "function") {
+    window.reannotateWithNewDict(localDict);
+  }
+
+  return data;
+}
+
+async function loadGeneratedDictionary() {
+  const url = window.MOGAO_CONFIG?.generatedDictionaryUrl;
+  if (!url) return;
+
+  try {
+    await window.dictionaryReady;
+  } catch {
+    return;
+  }
+
+  let data = await fetchAndMergeGeneratedDictionary(url);
+  if (data?.status !== "processing") return;
+
+  const pollId = setInterval(async () => {
+    data = await fetchAndMergeGeneratedDictionary(url);
+    if (data?.status !== "processing") clearInterval(pollId);
+  }, GENERATED_DICTIONARY_POLL_INTERVAL_MS);
+}
+
+void loadGeneratedDictionary();
 
 function formatDictionaryFrequency(frequency) {
   if (!frequency) return null;

@@ -115,6 +115,7 @@
     <script>
       window.MOGAO_CONFIG = {
         bookId: "{{ book_id }}",
+        generatedDictionaryUrl: {{ ("/api/book-dict/" ~ book_id) | tojson }},
         chapterIndex: {{ chapter_index }},
         initialScroll: {{ initial_scroll_percentage }},
         ankiEnabled: {{ anki_enabled | tojson }},
@@ -135,8 +136,7 @@
     {% endif %}
     <script src="{{ url_for('static', path='stats.js') }}?v=2"></script>
     <script src="{{ url_for('static', path='segmenter.js') }}?v=3"></script>
-    <script src="{{ url_for('static', path='dictionary.js') }}?v=6"></script>
-    <script src="{{ url_for('static', path='book_dict.js') }}"></script>
+    <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
     <script src="{{ url_for('static', path='reader.js') }}?v=2"></script>
   </body>
 </html>

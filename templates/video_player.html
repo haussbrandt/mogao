@@ -89,6 +89,7 @@
     window.MOGAO_CONFIG = {
       videoId: "{{ video_id }}",
       videoBasePath: "{{ video_base_path }}",
+      generatedDictionaryUrl: {{ (video_base_path ~ "/api/video-dict/" ~ video_id) | tojson }},
       initialPlaybackTime: {{ initial_playback_time | tojson }},
       hasSubtitles: {{ has_subtitles | tojson }},
       ankiEnabled: {{ anki_enabled | tojson }},
@@ -101,7 +102,6 @@
     <script src="{{ url_for('static', path='anki.js') }}?v=5"></script>
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=3"></script>
-  <script src="{{ url_for('static', path='dictionary.js') }}?v=6"></script>
-  <script src="{{ url_for('static', path='video_dict.js') }}"></script>
+  <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='video.js' )}}?v=2"></script>
 </html>
