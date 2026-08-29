@@ -33,6 +33,12 @@ cd mogao
 
 The quickstart script will handle some of the required things, but there are still some steps you need to perform manually (like set up the API keys, modify the Anki configuration or disable features you don't want to use). The script will print a list of these steps at the end.
 
+## Design philosophy
+
+Mogao was created with the intention of making a tool specifically tailored to my needs. That's why you won't find a settings page with themes, fonts and margin sizes, or support for Japanese here. If there is a choice to be made, it's already been made and it's the only way to use the app (barring a few config settings before startup). And if these choices are the same ones you'd make, Mogao is perfect for you. The only choice left is the most important one: which book to read.
+
+The target devices are the ones I use: an Android phone with Chrome for reading books and an iPad with Safari for watching videos, and while Mogao works on other devices such as PCs too, it's not trying to optimize the experience for them.
+
 ## Installation and configuration
 
 ### Prerequisites
