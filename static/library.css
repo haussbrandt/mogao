@@ -1,5 +1,4 @@
 @import url("variables.css");
-@import url("library_switcher.css");
 
 * {
   box-sizing: border-box;
@@ -35,16 +34,19 @@ h1 {
   border-bottom: 2px solid var(--border);
   padding-bottom: 10px;
 }
-.book-grid {
+.book-grid,
+.video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 15px;
   margin-top: 10px;
 }
-.book-grid.sort-pending {
+.book-grid.sort-pending,
+.video-grid.sort-pending {
   visibility: hidden;
 }
-.book-card {
+.book-card,
+.video-card {
   background: var(--bg-base);
   padding: 3px;
   border-radius: 1px;
@@ -56,13 +58,15 @@ h1 {
   position: relative;
   cursor: pointer;
 }
-.book-title {
+.book-title,
+.video-title {
   font-size: 1.2em;
   font-weight: bold;
   color: var(--text-emphasis);
   margin-bottom: 10px;
 }
-.book-meta {
+.book-meta,
+.video-meta {
   color: var(--text-muted);
   font-size: 0.9em;
   margin-bottom: 15px;
@@ -81,6 +85,11 @@ h1 {
   margin-top: auto;
   align-self: flex-start;
 }
+
+[data-video-base-path] .btn {
+  min-width: 115px;
+}
+
 .btn:hover {
   background: var(--accent-interactive-hover);
 }
@@ -118,8 +127,9 @@ h1 {
   z-index: 10;
 }
 
-/* Show button when hovering over the card */
-.book-card:hover .delete-btn {
+/* Show button when hovering over a card */
+.book-card:hover .delete-btn,
+.video-card:hover .delete-btn {
   opacity: 1;
 }
 
@@ -189,6 +199,51 @@ h1 {
   white-space: nowrap;
 }
 
+.upload-btn.disabled {
+  cursor: wait;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.upload-status {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-body);
+  margin-bottom: 20px;
+  padding: 10px;
+}
+
+.upload-status.error {
+  border-color: var(--accent-danger);
+}
+
+.upload-status progress {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.video-cover {
+  height: 140px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.no-cover {
+  color: var(--text-disabled);
+  font-weight: bold;
+  font-size: 0.9em;
+}
+
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -230,4 +285,118 @@ select:focus {
   gap: 10px;
   align-items: center;
   flex-wrap: nowrap;
+}
+
+.yt-input-wrapper {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.yt-input {
+  width: 220px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.yt-btn {
+  border: none;
+  white-space: nowrap;
+}
+
+.library-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.library-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: -4px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.library-switcher-trigger:hover {
+  background: var(--bg-subtle);
+}
+
+.library-switcher-trigger:focus-visible {
+  outline: 3px solid var(--accent-focus-ring);
+  outline-offset: 2px;
+}
+
+.library-switcher-chevron {
+  width: 0.42em;
+  height: 0.42em;
+  border-right: 0.1em solid currentColor;
+  border-bottom: 0.1em solid currentColor;
+  transform: translateY(-0.1em) rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.library-switcher-trigger[aria-expanded="true"] .library-switcher-chevron {
+  transform: translateY(0.1em) rotate(225deg);
+}
+
+.library-switcher-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: -6px;
+  z-index: 20;
+  min-width: 150px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-base);
+  box-shadow: 0 4px 12px var(--shadow-elevated);
+}
+
+.library-switcher-menu[hidden] {
+  display: none;
+}
+
+.library-switcher-menu a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: var(--text-body);
+  text-decoration: none;
+}
+
+.library-switcher-menu a:hover,
+.library-switcher-menu a:focus-visible {
+  background: var(--bg-subtle);
+  outline: none;
+}
+
+.library-switcher-menu a[aria-current="page"] {
+  color: var(--accent-interactive);
+  font-weight: 600;
+}
+
+@media (max-width: 769px) {
+  .controls-wrapper {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .yt-input-wrapper {
+    order: 1;
+  }
+
+  .yt-input {
+    width: 130px;
+  }
 }
