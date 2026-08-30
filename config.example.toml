@@ -20,6 +20,15 @@ app = "mogao"
 needs_processing = "needs-processing"
 needs_audio = "needs-audio"
 
+# Additional Anki cards whose words should be considered known.
+# Repeat [[anki.known_sources]] for sources that use different word fields.
+# Missing decks and tags are ignored.
+# `decks` and `tags` are optional filters, but at least one must be provided.
+[[anki.known_sources]]
+decks = ["Mandarin: Vocabulary"]
+tags = ["HSK1", "HSK2", "HSK3"]
+field = "Simplified"
+
 [paths]
 library = "library"
 video_library = "video_library"

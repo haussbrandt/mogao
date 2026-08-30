@@ -120,6 +120,7 @@
         initialScroll: {{ initial_scroll_percentage }},
         ankiEnabled: {{ anki_enabled | tojson }},
         deckWords: {{ deck_words | tojson }},
+        knownWords: {{ known_words | tojson }},
         spineMap: {
           {% for ch in book.spine %}
           "{{ ch.href }}": {{ ch.order }},
@@ -135,7 +136,7 @@
       <script src="{{ url_for('static', path='anki.js') }}?v=5"></script>
     {% endif %}
     <script src="{{ url_for('static', path='stats.js') }}?v=2"></script>
-    <script src="{{ url_for('static', path='segmenter.js') }}?v=3"></script>
+    <script src="{{ url_for('static', path='segmenter.js') }}?v=4"></script>
     <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
     <script src="{{ url_for('static', path='reader.js') }}?v=2"></script>
   </body>

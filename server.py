@@ -34,7 +34,7 @@ from core.paths import get_book_path, get_book_progress_path, unique_temp_path
 from integrations.anki import (
     call_anki,
     ensure_anki_available,
-    get_all_words_from_anki_deck,
+    get_anki_word_sets,
     validate_anki_configuration,
 )
 from integrations.llm_processor import (
@@ -372,10 +372,9 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
     deck_words = set()
+    known_words = set()
     if settings.anki.enabled:
-        deck_words = get_all_words_from_anki_deck(
-            settings.anki.deck, settings.anki.fields.word
-        )
+        deck_words, known_words = get_anki_word_sets()
 
     return templates.TemplateResponse(
         request,
@@ -390,6 +389,7 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
             "next_idx": next_idx,
             "initial_scroll_percentage": initial_scroll_percentage,
             "deck_words": list(deck_words),
+            "known_words": list(known_words),
             "anki_enabled": settings.anki.enabled,
         },
     )

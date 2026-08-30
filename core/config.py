@@ -38,6 +38,18 @@ class AnkiTags(SettingsModel):
     needs_audio: str
 
 
+class AnkiKnownSource(SettingsModel):
+    decks: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    field: str
+
+    @model_validator(mode="after")
+    def validate_has_filter(self):
+        if not self.decks and not self.tags:
+            raise ValueError("a known-word source requires decks, tags, or both")
+        return self
+
+
 class AnkiSettings(SettingsModel):
     enabled: bool
     url: str
@@ -45,6 +57,7 @@ class AnkiSettings(SettingsModel):
     model: str
     fields: AnkiFields
     tags: AnkiTags
+    known_sources: tuple[AnkiKnownSource, ...] = ()
 
 
 class Paths(SettingsModel):

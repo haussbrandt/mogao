@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from core.config import settings
 from core.dependencies import postprocessor, templates
 from core.paths import get_video_path, get_video_progress_path, unique_temp_path
-from integrations.anki import call_anki, get_all_words_from_anki_deck
+from integrations.anki import call_anki, get_anki_word_sets
 from integrations.llm_processor import load_video_dict, process_subtitles_background
 from videos.video import Video, cut_audio, generate_video, take_screenshot
 from videos.video_library import (
@@ -551,10 +551,9 @@ async def watch_video(request: Request, video_id: UUID):
     save_video_progress(video_id_string, seconds_since_start)
 
     deck_words = set()
+    known_words = set()
     if settings.anki.enabled:
-        deck_words = get_all_words_from_anki_deck(
-            settings.anki.deck, settings.anki.fields.word
-        )
+        deck_words, known_words = get_anki_word_sets()
 
     return templates.TemplateResponse(
         request,
@@ -566,6 +565,7 @@ async def watch_video(request: Request, video_id: UUID):
             "initial_playback_time": seconds_since_start,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
+            "known_words": list(known_words),
             "anki_enabled": settings.anki.enabled,
             "video_base_path": VIDEO_BASE_PATH,
         },

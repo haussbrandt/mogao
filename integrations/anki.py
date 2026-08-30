@@ -11,7 +11,7 @@ import ffmpeg
 import requests
 from elevenlabs.client import ElevenLabs
 
-from core.config import settings
+from core.config import AnkiKnownSource, settings
 from core.paths import named_temp_path
 from integrations.llm_client import LLMResponseError, generate_json
 
@@ -370,29 +370,32 @@ def validate_anki_configuration() -> None:
     if not model_missing:
         _validate_anki_model_fields()
 
-    if not deck_missing and not model_missing:
-        return
+    if deck_missing or model_missing:
+        missing_resources = []
+        if deck_missing:
+            missing_resources.append(f"Deck: {settings.anki.deck}")
+        if model_missing:
+            missing_resources.append(f"Note type: {settings.anki.model}")
 
-    missing_resources = []
-    if deck_missing:
-        missing_resources.append(f"Deck: {settings.anki.deck}")
-    if model_missing:
-        missing_resources.append(f"Note type: {settings.anki.model}")
+        if not _confirm_anki_resource_creation(missing_resources):
+            formatted_resources = ", ".join(missing_resources)
+            raise RuntimeError(
+                f"Anki configuration is missing {formatted_resources}. Create the "
+                "missing resources in Anki or set anki.deck, anki.model, and "
+                "anki.fields correctly in config.toml."
+            )
 
-    if not _confirm_anki_resource_creation(missing_resources):
-        formatted_resources = ", ".join(missing_resources)
-        raise RuntimeError(
-            f"Anki configuration is missing {formatted_resources}. Create the "
-            "missing resources in Anki or set anki.deck, anki.model, and "
-            "anki.fields correctly in config.toml."
-        )
+        if model_missing:
+            _create_anki_model()
+        if deck_missing:
+            _get_anki_result("createDeck", deck=settings.anki.deck)
 
-    if model_missing:
-        _create_anki_model()
-    if deck_missing:
-        _get_anki_result("createDeck", deck=settings.anki.deck)
+        _validate_created_anki_resources(deck_missing, model_missing)
+        deck_names = _get_anki_result("deckNames")
+        if not isinstance(deck_names, list):
+            raise RuntimeError("AnkiConnect returned an invalid deck list")
 
-    _validate_created_anki_resources(deck_missing, model_missing)
+    _validate_anki_known_sources(deck_names)
 
 
 def _validate_anki_model_fields() -> None:
@@ -506,10 +509,12 @@ def _validate_created_anki_resources(
         _validate_anki_model_fields()
 
 
-def _get_anki_result(action: str, **params):
+def _get_anki_result(
+    action: str, *, request_timeout=ANKI_REQUEST_TIMEOUT_SECONDS, **params
+):
     try:
         response = call_anki(
-            action, request_timeout=ANKI_REQUEST_TIMEOUT_SECONDS, **params
+            action, request_timeout=request_timeout, **params
         )
         response.raise_for_status()
         payload = response.json()
@@ -531,12 +536,131 @@ def _get_anki_result(action: str, **params):
     return payload["result"]
 
 
-def get_all_words_from_anki_deck(deck_name: str, field_name: str) -> set[str]:
-    """
-    Sends requests to AnkiConnect to get all cards from the deck `deck_name` and returns a set of values of the field `field_name` from them
-    """
-    call_anki("sync")
-    card_ids = call_anki("findCards", query=f'deck:"{deck_name}"').json()["result"]
-    cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
-    words = {card["fields"][field_name]["value"] for card in cards}
+def _quote_anki_search_value(value: str) -> str:
+    escaped_value = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped_value}"'
+
+
+def _build_anki_filter_query(
+    decks: tuple[str, ...], tags: tuple[str, ...]
+) -> str:
+    filters = []
+    for filter_name, values in (("deck", decks), ("tag", tags)):
+        terms = [
+            f"{filter_name}:{_quote_anki_search_value(value)}" for value in values
+        ]
+        if len(terms) == 1:
+            filters.append(terms[0])
+        elif terms:
+            filters.append(f"({' OR '.join(terms)})")
+
+    if not filters:
+        raise ValueError("an Anki search requires at least one deck or tag")
+    return " ".join(filters)
+
+
+def _known_source_description(source: AnkiKnownSource) -> str:
+    filters = []
+    if source.decks:
+        filters.append(f"decks={list(source.decks)!r}")
+    if source.tags:
+        filters.append(f"tags={list(source.tags)!r}")
+    return ", ".join(filters)
+
+
+def _known_source_query(
+    source: AnkiKnownSource, existing_decks: set[str]
+) -> str | None:
+    source_decks = tuple(deck for deck in source.decks if deck in existing_decks)
+    if source.decks and not source_decks:
+        return None
+    return _build_anki_filter_query(source_decks, source.tags)
+
+
+def _get_words_from_anki_query(
+    query: str, field_name: str, source_description: str
+) -> set[str]:
+    card_ids = _get_anki_result("findCards", query=query)
+    if not isinstance(card_ids, list):
+        raise RuntimeError("AnkiConnect returned an invalid card list")
+    if not card_ids:
+        return set()
+
+    cards = _get_anki_result("cardsInfo", cards=card_ids)
+    if not isinstance(cards, list):
+        raise RuntimeError("AnkiConnect returned invalid card information")
+
+    words = set()
+    for card in cards:
+        fields = card.get("fields") if isinstance(card, dict) else None
+        if not isinstance(fields, dict):
+            raise RuntimeError("AnkiConnect returned invalid card fields")
+        if field_name not in fields:
+            card_id = card.get("cardId", "unknown")
+            deck_name = card.get("deckName", "unknown")
+            raise RuntimeError(
+                f"Anki card {card_id} in deck {deck_name!r} matched "
+                f"{source_description}, but does not have the configured word "
+                f"field {field_name!r}"
+            )
+
+        field = fields[field_name]
+        if not isinstance(field, dict) or not isinstance(field.get("value"), str):
+            raise RuntimeError(
+                f"AnkiConnect returned an invalid value for field {field_name!r}"
+            )
+        if field["value"]:
+            words.add(field["value"])
     return words
+
+
+def _validate_anki_known_sources(deck_names: list[str]) -> None:
+    existing_decks = set(deck_names)
+    for source in settings.anki.known_sources:
+        query = _known_source_query(source, existing_decks)
+        if query is None:
+            continue
+        _get_words_from_anki_query(
+            query,
+            source.field,
+            f"known-word source ({_known_source_description(source)})",
+        )
+
+
+def get_anki_word_sets() -> tuple[set[str], set[str]]:
+    """Return words in Mogao's destination deck and all words considered known."""
+    _get_anki_result("sync", request_timeout=None)
+
+    deck_names = _get_anki_result("deckNames")
+    if not isinstance(deck_names, list):
+        raise RuntimeError("AnkiConnect returned an invalid deck list")
+    existing_decks = set(deck_names)
+
+    deck_query = _build_anki_filter_query((settings.anki.deck,), ())
+    deck_words = _get_words_from_anki_query(
+        deck_query,
+        settings.anki.fields.word,
+        f"the destination deck {settings.anki.deck!r}",
+    )
+    known_words = set(deck_words)
+
+    for source in settings.anki.known_sources:
+        query = _known_source_query(source, existing_decks)
+        if query is None:
+            continue
+        known_words.update(
+            _get_words_from_anki_query(
+                query,
+                source.field,
+                f"known-word source ({_known_source_description(source)})",
+            )
+        )
+
+    return deck_words, known_words
+
+
+def get_all_words_from_anki_deck(deck_name: str, field_name: str) -> set[str]:
+    """Return values of ``field_name`` from all cards in ``deck_name``."""
+    _get_anki_result("sync", request_timeout=None)
+    query = _build_anki_filter_query((deck_name,), ())
+    return _get_words_from_anki_query(query, field_name, f"deck {deck_name!r}")
