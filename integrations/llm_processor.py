@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 import re
+import tempfile
 from datetime import datetime
 from typing import Optional
 
@@ -27,6 +28,11 @@ _rate_lock: Optional[asyncio.Lock] = None
 _last_request_at: float = 0.0
 
 
+def _error_summary(error: Exception) -> str:
+    message = " ".join(str(error).split())
+    return (message or type(error).__name__)[:300]
+
+
 def _get_rate_lock() -> asyncio.Lock:
     """Lazily create the asyncio.Lock inside an async context."""
     global _rate_lock
@@ -47,10 +53,32 @@ def load_book_dict(book_id: str) -> dict:
     return {"status": "none", "words": {}, "processed_chunks": 0, "total_chunks": 0}
 
 
+def _save_dict(path: str, data: dict) -> None:
+    destination = os.fspath(path)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=os.path.dirname(destination) or ".",
+            prefix=f"{os.path.basename(destination)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            temporary_path = f.name
+            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+        os.replace(temporary_path, destination)
+    except Exception:
+        if temporary_path is not None:
+            try:
+                os.remove(temporary_path)
+            except FileNotFoundError:
+                pass
+        raise
+
+
 def _save_book_dict(book_id: str, data: dict) -> None:
-    path = get_book_dict_path(book_id)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+    _save_dict(get_book_dict_path(book_id), data)
 
 
 def load_video_dict(video_id: str) -> dict:
@@ -66,9 +94,7 @@ def load_video_dict(video_id: str) -> dict:
 
 
 def _save_video_dict(video_id: str, data: dict) -> None:
-    path = get_video_dict_path(video_id)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+    _save_dict(get_video_dict_path(video_id), data)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -241,269 +267,187 @@ async def _call_llm(
     )
     if not isinstance(data, dict) or not isinstance(data.get("words"), list):
         raise LLMResponseError("LLM response did not contain a words array")
+    for entry in data["words"]:
+        if not isinstance(entry, dict) or any(
+            not isinstance(entry.get(field), str)
+            for field in ("word", "pinyin", "english_meaning")
+        ):
+            raise LLMResponseError("LLM response contained an invalid dictionary entry")
     return data["words"]
 
 
 async def process_book_background(book_id: str, book, resume: bool = False) -> None:
-    """
-    Asyncio background task — do not await, use asyncio.create_task().
-
-    Chunks the book spine, calls the configured LLM for each chunk (respecting
-    the rate limit), and saves discovered words incrementally to book_dict.json
-    so the reader can access them as soon as the first chunk is processed.
-
-    Args:
-        book_id:  the UUID folder name (e.g. "a1b2c3d4-...")
-        book:     a fully-loaded Book dataclass
-        resume:   if True, skip chunks already present in completed_indices
-                  (used on server restart to recover interrupted jobs)
-    """
     if not settings.dictionary_generation.enabled:
         return
 
-    api_key = os.environ["DICTIONARY_GENERATION_API_KEY"]
-    model_name = settings.dictionary_generation.llm
-    base_url = settings.dictionary_generation.base_url
+    job_label = f"Book {book_id}"
+    try:
+        chunks = _chunk_spine(book.spine)
+    except Exception as error:
+        _record_job_failure(
+            job_label, book_id, error, load_book_dict, _save_book_dict
+        )
+        return
 
-    chunks = _chunk_spine(book.spine)
-    total = len(chunks)
-
-    if resume:
-        state = load_book_dict(book_id)
-        completed_indices = set(state.get("completed_indices", []))
-        if len(completed_indices) >= total:
-            state["status"] = "done"
-            _save_book_dict(book_id, state)
-            return
-
-        state["status"] = "processing"
-        state["total_chunks"] = total
-    else:
-        completed_indices = set()
-        state: dict = {
-            "status": "processing",
-            "words": {},
-            "processed_chunks": 0,
-            "completed_indices": [],
-            "total_chunks": total,
-            "started_at": datetime.now().isoformat(),
-        }
-
-    _save_book_dict(book_id, state)
-    logger.info(
-        f"Book {book_id}: {total} chunks, {len(completed_indices)} already complete"
+    await _run_dictionary_job(
+        job_label,
+        book_id,
+        chunks,
+        load_book_dict,
+        _save_book_dict,
+        resume=resume,
     )
-
-    async def fetch_chunk(index: int, text: str):
-        await _rate_limited_wait()
-        logger.info(
-            f"Book {book_id}: sending chunk {index + 1}/{total} "
-            f"({len(text):,} characters) to the API"
-        )
-        try:
-            entries = await _call_llm(
-                base_url=base_url,
-                api_key=api_key,
-                model=model_name,
-                text=text,
-            )
-            return index, entries, None
-        except Exception as error:
-            logger.exception(f"Book {book_id}: chunk {index + 1} failed")
-            return index, [], error
-
-    tasks = [
-        asyncio.create_task(fetch_chunk(i, chunk))
-        for i, chunk in enumerate(chunks)
-        if i not in completed_indices
-    ]
-
-    for coro in asyncio.as_completed(tasks):
-        i, entries, error = await coro
-
-        if error:
-            logger.warning(
-                f"Book {book_id}: chunk {i + 1} will be retried after the next "
-                "server restart"
-            )
-            continue
-
-        for entry in entries:
-            w = (entry.get("word") or "").strip()
-            if not w:
-                continue
-            if w not in state["words"]:
-                state["words"][w] = {
-                    "e": [
-                        {
-                            "p": entry.get("pinyin", ""),
-                            "d": [entry.get("english_meaning", "")],
-                        }
-                    ],
-                    "llm": True,
-                }
-
-        completed_indices.add(i)
-        state["completed_indices"] = list(completed_indices)
-        state["processed_chunks"] = len(completed_indices)
-
-        _save_book_dict(book_id, state)
-        logger.info(
-            f"Book {book_id}: chunk {i + 1}/{total} complete; "
-            f"{len(state['words'])} words so far"
-        )
-
-    if len(completed_indices) >= total:
-        state["status"] = "done"
-        state["completed_at"] = datetime.now().isoformat()
-        _save_book_dict(book_id, state)
-        logger.info(
-            f"Book {book_id}: dictionary complete; "
-            f"{len(state['words'])} LLM words extracted"
-        )
-    else:
-        logger.warning(
-            f"Book {book_id}: dictionary paused with errors; "
-            f"{len(completed_indices)}/{total} chunks complete"
-        )
 
 
 async def process_subtitles_background(video_id, resume: bool = False) -> None:
-    """
-    Asyncio background task — do not await, use asyncio.create_task().
-
-    Chunks the subtitles, calls the configured LLM for each chunk (respecting
-    the rate limit), and saves discovered words incrementally to
-    subtitles_dict.json so the user can access them as soon as the first chunk
-    is processed.
-
-    Args:
-        video_id:  the UUID folder name (e.g. "a1b2c3d4-...")
-        resume:    if True, skip chunks already present in completed_indices
-                   (used on server restart to recover interrupted jobs)
-    """
     if not settings.dictionary_generation.enabled:
         return
 
-    api_key = os.environ["DICTIONARY_GENERATION_API_KEY"]
-    model_name = settings.dictionary_generation.llm
-    base_url = settings.dictionary_generation.base_url
-
-    subtitles_path = get_video_path(video_id, "subtitles.srt")
-    if not os.path.exists(subtitles_path):
+    item_id = str(video_id)
+    job_label = f"Video {item_id}"
+    try:
+        with open(get_video_path(item_id, "subtitles.srt"), encoding="utf-8") as f:
+            chunks = _chunk_subtitles(f.read())
+    except Exception as error:
+        _record_job_failure(
+            job_label, item_id, error, load_video_dict, _save_video_dict
+        )
         return
 
-    with open(subtitles_path, "r") as f:
-        subtitles = f.read()
-    chunks = _chunk_subtitles(subtitles)
-    total = len(chunks)
-
-    if resume:
-        state = load_video_dict(video_id)
-        completed_indices = set(state.get("completed_indices", []))
-        if len(completed_indices) >= total:
-            state["status"] = "done"
-            _save_video_dict(video_id, state)
-            return
-
-        state["status"] = "processing"
-        state["total_chunks"] = total
-    else:
-        completed_indices = set()
-        state: dict = {
-            "status": "processing",
-            "words": {},
-            "processed_chunks": 0,
-            "completed_indices": [],
-            "total_chunks": total,
-            "started_at": datetime.now().isoformat(),
-        }
-
-    _save_video_dict(video_id, state)
-    logger.info(
-        f"Video {video_id}: {total} chunks, {len(completed_indices)} already complete"
+    await _run_dictionary_job(
+        job_label,
+        item_id,
+        chunks,
+        load_video_dict,
+        _save_video_dict,
+        resume=resume,
     )
 
-    async def fetch_chunk(index: int, text: str):
-        await _rate_limited_wait()
-        logger.info(
-            f"Video {video_id}: sending chunk {index + 1}/{total} "
-            f"({len(text):,} characters) to the API"
+
+def _record_job_failure(
+    job_label: str, item_id: str, error: Exception, load_state, save_state
+) -> None:
+    logger.exception(f"Dictionary generation failed for {job_label}")
+    try:
+        state = load_state(item_id)
+        state["status"] = "error"
+        state["last_error"] = _error_summary(error)
+        state["updated_at"] = datetime.now().isoformat()
+        save_state(item_id, state)
+    except Exception:
+        logger.exception(f"Could not save dictionary failure for {job_label}")
+
+
+async def _run_dictionary_job(
+    job_label: str,
+    item_id: str,
+    chunks: list[str],
+    load_state,
+    save_state,
+    *,
+    resume: bool = False,
+) -> None:
+    tasks = []
+    try:
+        api_key = os.environ["DICTIONARY_GENERATION_API_KEY"]
+        total = len(chunks)
+        state = (
+            load_state(item_id)
+            if resume
+            else {
+                "words": {},
+                "completed_indices": [],
+                "started_at": datetime.now().isoformat(),
+            }
         )
-        try:
-            entries = await _call_llm(
-                base_url=base_url,
-                api_key=api_key,
-                model=model_name,
-                text=text,
-            )
-            return index, entries, None
-        except Exception as error:
-            logger.exception(f"Video {video_id}: chunk {index + 1} failed")
-            return index, [], error
+        completed = set(state.get("completed_indices", []))
+        state.update(
+            status="processing",
+            total_chunks=total,
+            processed_chunks=len(completed),
+            failed_chunks=[],
+            updated_at=datetime.now().isoformat(),
+        )
+        state.pop("last_error", None)
+        state.pop("completed_at", None)
+        save_state(item_id, state)
 
-    tasks = [
-        asyncio.create_task(fetch_chunk(i, chunk))
-        for i, chunk in enumerate(chunks)
-        if i not in completed_indices
-    ]
+        async def fetch_chunk(index: int, text: str):
+            try:
+                await _rate_limited_wait()
+                logger.info(
+                    f"{job_label}: sending chunk {index + 1}/{total} "
+                    f"({len(text):,} characters) to the API"
+                )
+                entries = await _call_llm(
+                    base_url=settings.dictionary_generation.base_url,
+                    api_key=api_key,
+                    model=settings.dictionary_generation.llm,
+                    text=text,
+                )
+                return index, entries, None
+            except Exception as error:
+                logger.exception(f"{job_label}: chunk {index + 1} failed")
+                return index, [], error
 
-    for coro in asyncio.as_completed(tasks):
-        i, entries, error = await coro
-
-        if error:
-            logger.warning(
-                f"Video {video_id}: chunk {i + 1} will be retried after the next "
-                "server restart"
-            )
-            continue
-
-        for entry in entries:
-            w = (entry.get("word") or "").strip()
-            if not w:
-                continue
-            if w not in state["words"]:
-                state["words"][w] = {
-                    "e": [
-                        {
-                            "p": entry.get("pinyin", ""),
-                            "d": [entry.get("english_meaning", "")],
+        tasks = [
+            asyncio.create_task(fetch_chunk(i, chunk))
+            for i, chunk in enumerate(chunks)
+            if i not in completed
+        ]
+        for result in asyncio.as_completed(tasks):
+            index, entries, error = await result
+            if error is not None:
+                state["failed_chunks"].append(index + 1)
+                state["last_error"] = _error_summary(error)
+            else:
+                for entry in entries:
+                    word = entry["word"].strip()
+                    if word and word not in state["words"]:
+                        state["words"][word] = {
+                            "e": [
+                                {
+                                    "p": entry["pinyin"],
+                                    "d": [entry["english_meaning"]],
+                                }
+                            ],
+                            "llm": True,
                         }
-                    ],
-                    "llm": True,
-                }
+                completed.add(index)
+                state["completed_indices"] = sorted(completed)
+                state["processed_chunks"] = len(completed)
+            state["updated_at"] = datetime.now().isoformat()
+            save_state(item_id, state)
+            logger.info(
+                f"{job_label}: {len(completed)}/{total} chunks complete"
+            )
 
-        completed_indices.add(i)
-        state["completed_indices"] = list(completed_indices)
-        state["processed_chunks"] = len(completed_indices)
-
-        _save_video_dict(video_id, state)
-        logger.info(
-            f"Video {video_id}: chunk {i + 1}/{total} complete; "
-            f"{len(state['words'])} words so far"
-        )
-
-    if len(completed_indices) >= total:
-        state["status"] = "done"
-        state["completed_at"] = datetime.now().isoformat()
-        _save_video_dict(video_id, state)
-        logger.info(
-            f"Video {video_id}: dictionary complete; "
-            f"{len(state['words'])} LLM words extracted"
-        )
-    else:
-        logger.warning(
-            f"Video {video_id}: dictionary paused with errors; "
-            f"{len(completed_indices)}/{total} chunks complete"
-        )
+        state["status"] = "error" if state["failed_chunks"] else "done"
+        state["updated_at"] = datetime.now().isoformat()
+        if state["status"] == "done":
+            state["completed_at"] = state["updated_at"]
+        else:
+            logger.warning(
+                f"{job_label}: dictionary paused with errors; "
+                "it will be retried after the server restart"
+            )
+        save_state(item_id, state)
+    except Exception as error:
+        # Reload the last checkpoint so an interrupted merge is never saved as
+        # a successfully processed chunk.
+        _record_job_failure(job_label, item_id, error, load_state, save_state)
+    finally:
+        # A failed or cancelled parent must not leave requests running after it.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
     """
-    Called once at server startup. Scans all book folders and resumes processing when
-    book_dict.json still has "processing" status (meaning the
-    server was shut down mid-run), is missing or corrupt.
-    Also does the same for video folders and subtitles_dict.json files.
+    Called once at server startup. Resumes interrupted or paused dictionary jobs,
+    including missing or corrupt dictionary state, for both books and videos.
     """
     if not settings.dictionary_generation.enabled:
         return
@@ -524,7 +468,7 @@ async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
             try:
                 with open(dict_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                if data.get("status") != "processing":
+                if data.get("status") not in {"processing", "error"}:
                     continue
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
@@ -548,11 +492,13 @@ async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
                 continue
             if not os.path.isdir(video_path):
                 continue
+            if not os.path.isfile(get_video_path(video_id, "subtitles.srt")):
+                continue
             dict_path = get_video_dict_path(video_id)
             try:
                 with open(dict_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                if data.get("status") != "processing":
+                if data.get("status") not in {"processing", "error"}:
                     continue
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
