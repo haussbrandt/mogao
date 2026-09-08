@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from core.config import settings
 from core.dependencies import postprocessor, templates
 from core.paths import get_video_path, get_video_progress_path, unique_temp_path
-from integrations.anki import call_anki, get_anki_word_sets
+from integrations.anki import call_anki_async, get_anki_word_sets
 from integrations.llm_processor import load_video_dict, process_subtitles_background
 from videos.video import Video, cut_audio, generate_video, take_screenshot
 from videos.video_library import (
@@ -169,12 +169,20 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
         ],
         "tags": tags,
     }
-    call_anki("addNote", note=note)
-    if settings.postprocessing.text.enabled:
-        asyncio.create_task(postprocessor.check_and_process())
-    call_anki("sync")
-    os.remove(audio_path)
-    os.remove(screenshot_path)
+    try:
+        await call_anki_async("addNote", note=note)
+        if settings.postprocessing.text.enabled:
+            asyncio.create_task(postprocessor.check_and_process())
+        try:
+            await call_anki_async("sync")
+        except RuntimeError:
+            logger.exception("Anki note was created, but synchronization failed")
+    finally:
+        for path in (audio_path, screenshot_path):
+            try:
+                os.remove(path)
+            except OSError:
+                logger.exception("Failed to remove temporary video media %s", path)
     return {"status": "ok"}
 
 
@@ -628,9 +636,9 @@ async def video_library_view(request: Request):
 
                 tagged_card_ids = []
                 if settings.anki.enabled:
-                    tagged_card_ids = call_anki(
+                    tagged_card_ids = await call_anki_async(
                         "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
-                    ).json()["result"]
+                    )
 
                 progress_path = get_video_progress_path(item)
                 last_watch_time = (

@@ -32,7 +32,7 @@ from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
 from core.paths import get_book_path, get_book_progress_path, unique_temp_path
 from integrations.anki import (
-    call_anki,
+    call_anki_async,
     ensure_anki_available,
     get_anki_word_sets,
     validate_anki_configuration,
@@ -209,10 +209,13 @@ async def create_new_anki_card(data: NewCardRequest):
         },
         "tags": tags,
     }
-    call_anki("addNote", note=note)
+    await call_anki_async("addNote", note=note)
     if settings.postprocessing.text.enabled or settings.postprocessing.audio.enabled:
         asyncio.create_task(postprocessor.check_and_process())
-    call_anki("sync")
+    try:
+        await call_anki_async("sync")
+    except RuntimeError:
+        logger.exception("Anki note was created, but synchronization failed")
     return {"status": "ok"}
 
 
@@ -234,9 +237,9 @@ async def library_view(request: Request):
 
                 tagged_card_ids = []
                 if settings.anki.enabled:
-                    tagged_card_ids = call_anki(
+                    tagged_card_ids = await call_anki_async(
                         "findCards", query=f"tag:{settings.anki.tags.app}-{item}"
-                    ).json()["result"]
+                    )
 
                 progress_path = get_book_progress_path(item)
                 last_read_time = (

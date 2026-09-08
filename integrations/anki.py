@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from functools import lru_cache
@@ -17,7 +18,8 @@ from integrations.llm_client import LLMResponseError, generate_json
 
 logger = logging.getLogger(__name__)
 
-ANKI_REQUEST_TIMEOUT_SECONDS = 5
+ANKI_REQUEST_TIMEOUT_SECONDS = 10
+ANKI_SYNC_TIMEOUT_SECONDS = 60
 
 ANKI_MODEL_CSS = """\
 .card {
@@ -81,15 +83,20 @@ class Postprocessor:
 
     def initialize_clients(self) -> None:
         if settings.postprocessing.audio.enabled:
-            self.eleven_client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
+            self.eleven_client = ElevenLabs(
+                api_key=os.environ["ELEVENLABS_API_KEY"], timeout=60
+            )
 
     async def check_and_process(self):
         async with self.lock:
-            call_anki("sync")
+            try:
+                await call_anki_async("sync")
+            except RuntimeError:
+                logger.exception("Anki synchronization failed before postprocessing")
             if settings.postprocessing.text.enabled:
-                processing_card_ids = call_anki(
+                processing_card_ids = await call_anki_async(
                     "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
-                ).json()["result"]
+                )
                 logger.info(
                     f"Cards waiting for postprocessing: {len(processing_card_ids)}"
                 )
@@ -108,13 +115,16 @@ class Postprocessor:
                     await self.run_text_postprocessing(processing_card_ids)
 
                     self.last_timer_reset = current_time
-                    if self.timer_task:
+                    if (
+                        self.timer_task
+                        and self.timer_task is not asyncio.current_task()
+                    ):
                         self.timer_task.cancel()
 
-                    processing_card_ids = call_anki(
+                    processing_card_ids = await call_anki_async(
                         "findCards",
                         query=f"tag:{settings.anki.tags.needs_processing}",
-                    ).json()["result"]
+                    )
 
                     if processing_card_ids:
                         logger.info(
@@ -132,9 +142,9 @@ class Postprocessor:
                     )
 
             if settings.postprocessing.audio.enabled:
-                audio_card_ids = call_anki(
+                audio_card_ids = await call_anki_async(
                     "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
-                ).json()["result"]
+                )
                 logger.info(f"Cards waiting for audio: {len(audio_card_ids)}")
 
                 await self.run_audio_postprocessing(audio_card_ids)
@@ -144,10 +154,15 @@ class Postprocessor:
             await asyncio.sleep(self.timeout)
             await self.check_and_process()
         except asyncio.CancelledError:
-            pass
+            raise
+        except Exception:
+            logger.exception("Scheduled postprocessing failed")
+        finally:
+            if self.timer_task is asyncio.current_task():
+                self.timer_task = None
 
     async def run_text_postprocessing(self, card_ids):
-        cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
+        cards = await call_anki_async("cardsInfo", cards=card_ids)
         batch_data = []
         for card in cards:
             batch_data.append(
@@ -174,10 +189,10 @@ class Postprocessor:
                         ],
                     }
 
-                    call_anki(
+                    await call_anki_async(
                         "updateNoteFields", note={"id": note_id, "fields": fields}
                     )
-                    call_anki(
+                    await call_anki_async(
                         "removeTags",
                         notes=[note_id],
                         tags=settings.anki.tags.needs_processing,
@@ -185,7 +200,10 @@ class Postprocessor:
                     logger.info(f"Processed Anki note {note_id}")
                 except Exception:
                     logger.exception("Failed to postprocess an Anki note")
-            call_anki("sync")
+            try:
+                await call_anki_async("sync")
+            except RuntimeError:
+                logger.exception("Anki synchronization failed after text postprocessing")
 
     @lru_cache(maxsize=20)
     def call_elevenlabs_api(self, sentence_clean):
@@ -197,7 +215,11 @@ class Postprocessor:
         return response
 
     async def run_audio_postprocessing(self, card_ids):
-        cards = call_anki("cardsInfo", cards=card_ids).json()["result"]
+        # TTS, audio files, ffmpeg and AnkiConnect all perform blocking I/O.
+        await asyncio.to_thread(self._run_audio_postprocessing, card_ids)
+
+    def _run_audio_postprocessing(self, card_ids):
+        cards = _get_anki_result("cardsInfo", cards=card_ids)
         for card in cards:
             try:
                 note_id = card["note"]
@@ -228,9 +250,11 @@ class Postprocessor:
                 output = ffmpeg.output(
                     input_file, str(word_audio_path)
                 ).overwrite_output()
-                ffmpeg.run(output, quiet=True)
+                subprocess.run(
+                    ffmpeg.compile(output), capture_output=True, check=True, timeout=60
+                )
 
-                call_anki(
+                _get_anki_result(
                     "updateNoteFields",
                     note={
                         "id": note_id,
@@ -249,7 +273,7 @@ class Postprocessor:
                         ],
                     },
                 )
-                call_anki(
+                _get_anki_result(
                     "removeTags",
                     notes=[note_id],
                     tags=settings.anki.tags.needs_audio,
@@ -264,7 +288,10 @@ class Postprocessor:
                     f"Failed to add audio to Anki note {card.get('note', 'unknown')}"
                 )
 
-        call_anki("sync")
+        try:
+            _get_anki_result("sync", request_timeout=ANKI_SYNC_TIMEOUT_SECONDS)
+        except RuntimeError:
+            logger.exception("Anki synchronization failed after audio postprocessing")
 
 
 _POSTPROCESSING_RESPONSE_SCHEMA = {
@@ -328,6 +355,19 @@ def call_anki(action, *, request_timeout=None, **params):
         settings.anki.url,
         json={"action": action, "params": params, "version": 6},
         timeout=request_timeout,
+    )
+
+
+async def call_anki_async(action, *, request_timeout=None, **params):
+    """Run a checked AnkiConnect request without blocking the event loop."""
+    if request_timeout is None:
+        request_timeout = (
+            ANKI_SYNC_TIMEOUT_SECONDS
+            if action == "sync"
+            else ANKI_REQUEST_TIMEOUT_SECONDS
+        )
+    return await asyncio.to_thread(
+        _get_anki_result, action, request_timeout=request_timeout, **params
     )
 
 
