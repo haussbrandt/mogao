@@ -31,6 +31,7 @@ from core.config import settings
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
 from core.paths import get_book_path, get_book_progress_path, unique_temp_path
+from core.status import build_status
 from integrations.anki import (
     call_anki_async,
     ensure_anki_available,
@@ -282,7 +283,20 @@ async def library_view(request: Request):
             "request": request,
             "books": books,
             "current_sort": current_sort,
-            "video_base_path": video_router.VIDEO_BASE_PATH,
+            "video_enabled": settings.video.enabled,
+        },
+    )
+
+
+@app.get("/status", response_class=HTMLResponse)
+async def status_view(request: Request):
+    status = await asyncio.to_thread(build_status)
+    return templates.TemplateResponse(
+        request,
+        "status.html",
+        {
+            "request": request,
+            "status": status,
             "video_enabled": settings.video.enabled,
         },
     )

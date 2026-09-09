@@ -50,12 +50,13 @@
           <nav
             id="library-switcher-menu"
             class="library-switcher-menu"
-            aria-label="Choose library"
+            aria-label="Choose section"
             data-library-switcher-menu
             hidden
           >
             <a href="/">Books</a>
-            <a href="{{ video_base_path }}/" aria-current="page">Videos</a>
+            <a href="{{ url_for('video_library_view') }}" aria-current="page">Videos</a>
+            <a href="/status">Status</a>
           </nav>
         </div>
         <div class="controls-wrapper">

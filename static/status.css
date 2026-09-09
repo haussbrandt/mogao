@@ -1,0 +1,237 @@
+.status-page {
+  --status-green-soft: rgb(64 217 138 / 0.12);
+  --status-yellow-soft: rgb(255 212 59 / 0.14);
+  --status-red-soft: rgb(255 77 77 / 0.11);
+  color: var(--text-body);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  line-height: 1.45;
+}
+
+.status-page .container {
+  width: 100%;
+  max-width: 800px;
+}
+
+.status-page .header-row {
+  margin-bottom: 24px;
+}
+
+.status-summary,
+.status-panel {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-base);
+  color: var(--text-body);
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+.status-summary {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-left: 4px solid var(--accent-add);
+}
+
+.status-summary-attention {
+  border-left-color: var(--accent-danger);
+}
+
+.status-summary h2,
+.status-summary p,
+.status-panel h2 {
+  margin: 0;
+}
+
+.status-summary h2 {
+  color: var(--text-emphasis);
+  font-size: 1.12rem;
+  font-weight: 700;
+}
+
+.status-summary p {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.status-dot {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 3px solid var(--bg-base);
+  border-radius: 50%;
+  background: var(--accent-add);
+  box-shadow: 0 0 0 4px var(--status-green-soft);
+}
+
+.status-summary-attention .status-dot {
+  background: var(--accent-danger);
+  box-shadow: 0 0 0 4px var(--status-red-soft);
+}
+
+.status-panel {
+  margin-bottom: 18px;
+  padding: 20px;
+}
+
+.status-panel h2 {
+  margin-bottom: 14px;
+  color: var(--text-emphasis);
+  font-size: 0.95rem;
+  font-weight: 750;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.status-list {
+  margin: 0;
+}
+
+.status-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  align-items: baseline;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.status-list > div:first-child {
+  padding-top: 1px;
+}
+
+.status-list > div:last-child {
+  padding-bottom: 1px;
+  border-bottom: 0;
+}
+
+.status-list dt {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.status-list dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-body);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.storage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.storage-item {
+  min-width: 0;
+  max-width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+
+.storage-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.storage-heading strong {
+  min-width: 0;
+  color: var(--text-body);
+  font-size: 0.92rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.storage-heading span {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.status-page progress {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 7px;
+  margin: 10px 0 5px;
+  overflow: hidden;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.status-page progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.status-page progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--accent-interactive);
+}
+
+.status-page progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--accent-interactive);
+}
+
+.storage-low progress::-webkit-progress-value {
+  background: var(--accent-danger);
+}
+
+.storage-low progress::-moz-progress-bar {
+  background: var(--accent-danger);
+}
+
+.status-muted {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.status-warning {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent-highlight);
+  border-radius: 7px;
+  background: var(--status-yellow-soft);
+  color: var(--text-body);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .storage-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .status-panel,
+  .status-summary {
+    padding: 16px;
+  }
+
+  .status-list > div {
+    gap: 10px;
+  }
+}

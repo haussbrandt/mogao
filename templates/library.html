@@ -31,7 +31,6 @@
   <body>
     <div class="container">
       <div class="header-row">
-        {% if video_enabled %}
         <div class="library-switcher" data-library-switcher>
           <h1>
             <button
@@ -48,17 +47,17 @@
           <nav
             id="library-switcher-menu"
             class="library-switcher-menu"
-            aria-label="Choose library"
+            aria-label="Choose section"
             data-library-switcher-menu
             hidden
           >
             <a href="/" aria-current="page">Books</a>
-            <a href="{{ video_base_path }}/">Videos</a>
+            {% if video_enabled %}
+            <a href="{{ url_for('video_library_view') }}">Videos</a>
+            {% endif %}
+            <a href="/status">Status</a>
           </nav>
         </div>
-        {% else %}
-        <h1>Books</h1>
-        {% endif %}
         <div class="controls-wrapper">
           <select id="sort-selector" data-sort-selector>
             <option value="title" data-field="title" data-kind="text" data-direction="asc" {% if current_sort == 'title' %}selected{% endif %}>Alphabetical</option>
