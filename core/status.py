@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import time
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
@@ -9,6 +10,7 @@ from uuid import UUID
 import tomllib
 
 from core.config import PROJECT_ROOT, settings
+from core.logging_config import get_recent_issues
 from core.paths import TEMP_DIRECTORY
 
 
@@ -34,6 +36,13 @@ def _format_uptime(seconds: float) -> str:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _format_timestamp(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return value
 
 
 def _existing_ancestor(path: Path) -> Path:
@@ -148,6 +157,10 @@ def _application_version() -> dict[str, str | None]:
 def build_status() -> dict:
     storage = _storage_status()
     application_version = _application_version()
+    issues = [
+        {**issue, "timestamp": _format_timestamp(issue["timestamp"])}
+        for issue in get_recent_issues()
+    ]
     storage_low = any(filesystem["low"] for filesystem in storage)
 
     if storage_low:
@@ -165,6 +178,7 @@ def build_status() -> dict:
 
     return {
         "overall": overall,
+        "issues": issues,
         "storage": storage,
         "server": {
             "version": application_version["display"],

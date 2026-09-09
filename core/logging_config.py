@@ -1,5 +1,7 @@
 import logging
+from collections import deque
 from copy import copy
+from datetime import datetime
 
 from uvicorn.logging import AccessFormatter, DefaultFormatter
 
@@ -28,6 +30,38 @@ ACCESS_LOG_FORMAT = (
     '%(client_addr)s - "%(request_line)s" %(status_code)s'
 )
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+_recent_issues: deque[dict[str, str]] = deque(maxlen=20)
+
+
+class RecentIssueHandler(logging.Handler):
+    """Keep a small, user-readable list of warnings from this server run."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = " ".join(record.getMessage().split())
+            if record.exc_info and record.exc_info[1]:
+                detail = " ".join(str(record.exc_info[1]).split())
+                if detail and detail not in message:
+                    message = f"{message}: {detail}"
+            _recent_issues.append(
+                {
+                    "timestamp": datetime.fromtimestamp(record.created)
+                    .astimezone()
+                    .isoformat(timespec="seconds"),
+                    "level": record.levelname,
+                    "component": record.name.rsplit(".", 1)[-1],
+                    "message": message[:500],
+                }
+            )
+        except Exception:
+            self.handleError(record)
+
+
+def get_recent_issues(limit: int = 20) -> list[dict[str, str]]:
+    if limit <= 0:
+        return []
+    return list(_recent_issues)[-limit:][::-1]
 
 
 def add_colored_tag(record: logging.LogRecord, use_colors: bool) -> logging.LogRecord:
@@ -61,6 +95,7 @@ def configure_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
     root_logger.addHandler(application_handler)
+    root_logger.addHandler(RecentIssueHandler(level=logging.WARNING))
     root_logger.setLevel(logging.INFO)
     logging.captureWarnings(True)
 

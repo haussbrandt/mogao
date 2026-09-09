@@ -1,6 +1,7 @@
 .status-page {
   --status-green-soft: rgb(64 217 138 / 0.12);
   --status-yellow-soft: rgb(255 212 59 / 0.14);
+  --status-warning-text: #7a5d00;
   --status-red-soft: rgb(255 77 77 / 0.11);
   color: var(--text-body);
   font-family:
@@ -227,6 +228,83 @@
   color: var(--text-body);
   font-size: 0.82rem;
   overflow-wrap: anywhere;
+}
+
+.issue-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.issue-item {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+
+.issue-meta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.issue-level {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.issue-level-warning {
+  border-color: var(--accent-highlight);
+  background: var(--status-yellow-soft);
+  color: var(--status-warning-text);
+}
+
+.issue-level-error,
+.issue-level-critical {
+  border-color: var(--accent-danger);
+  background: var(--status-red-soft);
+  color: var(--accent-danger);
+}
+
+.issue-item p {
+  max-width: 100%;
+  margin: 8px 0 0;
+  color: var(--text-body);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.status-empty {
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .status-page {
+    --status-warning-text: #e0bd57;
+  }
 }
 
 @media (max-width: 600px) {
