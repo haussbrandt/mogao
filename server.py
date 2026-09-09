@@ -290,14 +290,25 @@ async def library_view(request: Request):
 
 @app.get("/status", response_class=HTMLResponse)
 async def status_view(request: Request):
-    status = await asyncio.to_thread(build_status)
     return templates.TemplateResponse(
         request,
         "status.html",
         {
             "request": request,
-            "status": status,
+            "status": await asyncio.to_thread(build_status),
             "video_enabled": settings.video.enabled,
+        },
+    )
+
+
+@app.get("/status/content", response_class=HTMLResponse)
+async def status_content(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "status_content.html",
+        {
+            "request": request,
+            "status": await asyncio.to_thread(build_status),
         },
     )
 

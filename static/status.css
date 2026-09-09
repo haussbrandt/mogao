@@ -18,6 +18,14 @@
   margin-bottom: 24px;
 }
 
+.status-stale .status-summary {
+  display: none;
+}
+
+.status-page [data-status-connection] {
+  margin-bottom: 18px;
+}
+
 .status-summary,
 .status-panel {
   min-width: 0;
