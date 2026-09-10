@@ -391,6 +391,9 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
     video_active = any(job["status"] == "processing" for job in video_jobs)
     postprocessing_problem = postprocessing["state"] == "unavailable"
     postprocessing_active = postprocessing["state"] == "active"
+    background_work_active = (
+        dictionary_active or video_active or postprocessing_active
+    )
 
     if storage_low or dictionary_problem or video_problem or postprocessing_problem:
         overall = {
@@ -398,7 +401,7 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
             "label": "Needs attention",
             "detail": "One or more current conditions need attention.",
         }
-    elif dictionary_active or video_active or postprocessing_active:
+    elif background_work_active:
         overall = {
             "state": "working",
             "label": "Working",
@@ -412,6 +415,7 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
         }
 
     return {
+        "background_work_active": background_work_active,
         "overall": overall,
         "dictionary_enabled": settings.dictionary_generation.enabled,
         "dictionaries": dictionaries,

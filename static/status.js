@@ -1,5 +1,6 @@
 (() => {
   const REFRESH_INTERVAL_MS = 10_000;
+  const ACTIVE_REFRESH_INTERVAL_MS = 2_000;
   const refreshUrl = document.body.dataset.statusContentUrl;
   let statusContent = document.querySelector("[data-status-content]");
   const connectionMessage = document.querySelector("[data-status-connection]");
@@ -13,7 +14,11 @@
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
     if (!document.hidden) {
-      refreshTimer = setTimeout(refreshStatus, REFRESH_INTERVAL_MS);
+      const delay =
+        statusContent.dataset.backgroundWorkActive === "true"
+          ? ACTIVE_REFRESH_INTERVAL_MS
+          : REFRESH_INTERVAL_MS;
+      refreshTimer = setTimeout(refreshStatus, delay);
     }
   }
 

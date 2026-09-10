@@ -1,4 +1,8 @@
-<div id="status-content" data-status-content>
+<div
+  id="status-content"
+  data-status-content
+  data-background-work-active="{{ status.background_work_active|lower }}"
+>
   <section class="status-summary status-summary-{{ status.overall.state }}">
     <span class="status-dot" aria-hidden="true"></span>
     <div>
