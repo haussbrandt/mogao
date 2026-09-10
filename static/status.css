@@ -306,7 +306,8 @@
   color: var(--accent-interactive);
 }
 
-.status-badge-error {
+.status-badge-error,
+.status-badge-failed {
   border-color: var(--accent-danger);
   background: var(--status-red-soft);
   color: var(--accent-danger);

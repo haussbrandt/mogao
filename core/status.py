@@ -362,7 +362,7 @@ def _postprocessing_status(postprocessor) -> dict:
     }
 
 
-def build_status(postprocessor) -> dict:
+def build_status(postprocessor, video_processing_jobs: dict) -> dict:
     books, videos = _content_inventory()
     dictionaries = _dictionary_status(books, videos)
     postprocessing = _postprocessing_status(postprocessor)
@@ -372,21 +372,32 @@ def build_status(postprocessor) -> dict:
         {**issue, "timestamp": _format_timestamp(issue["timestamp"])}
         for issue in get_recent_issues()
     ]
+    video_jobs = [
+        {
+            "title": str(job["title"])[:300],
+            "status": job.get("status", "unknown"),
+            "detail": str(job.get("detail", ""))[:300],
+        }
+        for job in video_processing_jobs.values()
+        if job.get("status") != "complete"
+    ]
     storage_low = any(filesystem["low"] for filesystem in storage)
     dictionary_problem = any(job["status"] == "error" for job in dictionaries)
     dictionary_active = any(
         job["status"] == "processing" for job in dictionaries
     )
+    video_problem = any(job["status"] == "failed" for job in video_jobs)
+    video_active = any(job["status"] == "processing" for job in video_jobs)
     postprocessing_problem = postprocessing["state"] == "unavailable"
     postprocessing_active = postprocessing["state"] == "active"
 
-    if storage_low or dictionary_problem or postprocessing_problem:
+    if storage_low or dictionary_problem or video_problem or postprocessing_problem:
         overall = {
             "state": "attention",
             "label": "Needs attention",
             "detail": "One or more current conditions need attention.",
         }
-    elif dictionary_active or postprocessing_active:
+    elif dictionary_active or video_active or postprocessing_active:
         overall = {
             "state": "working",
             "label": "Working",
@@ -406,6 +417,7 @@ def build_status(postprocessor) -> dict:
         "issues": issues,
         "postprocessing": postprocessing,
         "storage": storage,
+        "video_jobs": video_jobs,
         "server": {
             "version": application_version["display"],
             "version_warning": application_version["warning"],

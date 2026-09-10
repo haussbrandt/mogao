@@ -1,14 +1,19 @@
 import json
+import logging
 import os
 import pickle
 import shutil
 import subprocess
+import tempfile
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 from core.paths import get_video_path, unique_temp_path
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -101,79 +106,106 @@ def generate_video(
     metadata = Metadata(original_filename, duration_ts, duration, file_size)
     unique_key = metadata.generate_key()
     output_dir = get_video_path(unique_key)
-    video_output_path = get_video_path(unique_key, "video.mp4")
-    cover_output_path = get_video_path(unique_key, "cover.jpg")
-    metadata_output_path = get_video_path(unique_key, "video.pkl")
-    if os.path.exists(output_dir):
-        shutil.rmtree(output_dir)
-    os.makedirs(output_dir)
-    video_codec = probe_video_codec(path)
-    audio_codec = probe_audio_codec(path)
-    if video_codec in ("hevc", "h264"):
-        # Already a Safari-compatible codec — just remux video, no quality loss, can convert audio
-        ffmpeg_cmd = [
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    # Only publish a library entry once all processing has succeeded. Failed
+    # imports leave no partial folder and cannot overwrite an existing video.
+    with tempfile.TemporaryDirectory(
+        prefix=".processing-", dir=output_dir.parent
+    ) as temporary_dir:
+        processing_dir = Path(temporary_dir) / str(unique_key)
+        processing_dir.mkdir()
+        video_output_path = processing_dir / "video.mp4"
+        cover_output_path = processing_dir / "cover.jpg"
+        metadata_output_path = processing_dir / "video.pkl"
+        video_codec = probe_video_codec(path)
+        audio_codec = probe_audio_codec(path)
+        if video_codec in ("hevc", "h264"):
+            # Already a Safari-compatible codec — just remux video, no quality loss, can convert audio
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-i",
+                path,
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac" if audio_codec != "aac" else "copy",
+                "-movflags",
+                "+faststart",
+                "-y",
+                video_output_path,
+            ]
+        else:
+            # Re-encode to H.264
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-i",
+                path,
+                "-c:v",
+                "libx264",
+                "-crf",
+                "23",
+                "-preset",
+                "veryfast",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
+                "-y",
+                video_output_path,
+            ]
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        os.remove(path)
+
+        # Generate a thumbnail
+        cmd = [
             "ffmpeg",
+            "-ss",
+            "00:00:05",
             "-i",
-            path,
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac" if audio_codec != "aac" else "copy",
-            "-movflags",
-            "+faststart",
-            "-y",
             video_output_path,
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            cover_output_path,
         ]
-    else:
-        # Re-encode to H.264
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-i",
-            path,
-            "-c:v",
-            "libx264",
-            "-crf",
-            "23",
-            "-preset",
-            "veryfast",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            "-movflags",
-            "+faststart",
-            "-y",
-            video_output_path,
-        ]
-    subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-    os.remove(path)
 
-    # Generate a thumbnail
-    cmd = [
-        "ffmpeg",
-        "-ss",
-        "00:00:05",
-        "-i",
-        video_output_path,
-        "-vframes",
-        "1",
-        "-q:v",
-        "2",
-        cover_output_path,
-    ]
+        subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
+        )
 
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        processed_video = Video(
+            metadata=metadata,
+            processed_at=datetime.now().isoformat(),
+            cover_image=f"cover.jpg",
+        )
 
-    processed_video = Video(
-        metadata=metadata,
-        processed_at=datetime.now().isoformat(),
-        cover_image=f"cover.jpg",
-    )
+        with open(metadata_output_path, "wb") as f:
+            pickle.dump(processed_video, f)
 
-    with open(metadata_output_path, "wb") as f:
-        pickle.dump(processed_video, f)
+        backup_dir = None
+        if output_dir.exists():
+            backup_dir = output_dir.with_name(f".replaced-{uuid.uuid4()}")
+            output_dir.rename(backup_dir)
+        try:
+            processing_dir.rename(output_dir)
+        except OSError:
+            if backup_dir is not None:
+                backup_dir.rename(output_dir)
+            raise
+        if backup_dir is not None:
+            try:
+                shutil.rmtree(backup_dir)
+            except OSError:
+                logger.exception(
+                    "Failed to remove replaced video folder for %s: %s",
+                    original_filename,
+                    backup_dir,
+                )
 
     return processed_video, output_dir
 

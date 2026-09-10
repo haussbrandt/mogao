@@ -111,13 +111,22 @@ def process_chunked_video(path: str, original_filename: str, upload_id: UUID):
         write_processing_status(
             upload_id,
             "complete",
+            title=original_filename,
             video_id=output_dir.name,
         )
     except Exception as error:
-        logger.exception(f"Error processing chunked video upload {upload_id}")
-        if os.path.exists(path):
+        logger.exception("Video processing failed for %s", original_filename)
+        try:
             os.remove(path)
-        write_processing_status(upload_id, "failed", detail=str(error))
+        except FileNotFoundError:
+            pass
+        except OSError:
+            logger.exception(
+                "Failed to remove temporary upload for %s", original_filename
+            )
+        write_processing_status(
+            upload_id, "failed", title=original_filename, detail=str(error)
+        )
 
 
 class NewCardFromVideoRequest(BaseModel):
@@ -319,7 +328,9 @@ async def complete_chunk_upload(upload_id: UUID, background_tasks: BackgroundTas
         raise HTTPException(status_code=500, detail="Failed to assemble video upload")
 
     shutil.rmtree(upload_dir)
-    write_processing_status(upload_id, "processing")
+    write_processing_status(
+        upload_id, "processing", title=metadata["filename"]
+    )
     background_tasks.add_task(
         process_chunked_video, temp_filename, metadata["filename"], upload_id
     )

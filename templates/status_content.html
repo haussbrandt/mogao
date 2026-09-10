@@ -90,6 +90,29 @@
   </section>
 
   <section class="status-panel">
+    <h2>Video processing</h2>
+    {% if status.video_jobs %}
+    <div class="dictionary-list">
+      {% for job in status.video_jobs %}
+      <article class="dictionary-job">
+        <div class="dictionary-heading">
+          <strong>{{ job.title }}</strong>
+          <span class="status-badge status-badge-{{ job.status }}">
+            {{ job.status|replace('_', ' ')|title }}
+          </span>
+        </div>
+        {% if job.detail %}
+        <p class="status-error">{{ job.detail }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="status-empty">No video processing is in progress.</p>
+    {% endif %}
+  </section>
+
+  <section class="status-panel">
     <h2>Recent issues</h2>
     {% if status.issues %}
     <div class="issue-list">
