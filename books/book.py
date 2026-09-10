@@ -185,7 +185,9 @@ class Book:
 
 def _process_metadata(ebook):
     title = ebook.get_metadata("DC", "title")
-    title = title[0][0] if title else "Untitled"
+    title = title[0][0] if title else None
+    if not title or not title.strip():
+        title = "Untitled"
     authors = ebook.get_metadata("DC", "creator")
     authors = [author[0] for author in authors] if authors else []
 

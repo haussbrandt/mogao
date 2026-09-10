@@ -41,6 +41,62 @@
   </section>
 
   <section class="status-panel">
+    <h2>Dictionary generation</h2>
+    {% if not status.dictionary_enabled %}
+    <p class="status-empty">Dictionary generation is disabled.</p>
+    {% elif not status.dictionaries %}
+    <p class="status-empty">No dictionary work is pending.</p>
+    {% else %}
+    <div class="dictionary-list">
+      {% for job in status.dictionaries %}
+      <article class="dictionary-job">
+        <div class="dictionary-heading">
+          <div>
+            <span class="status-kind">{{ job.kind }}</span>
+            <strong>{{ job.title }}</strong>
+          </div>
+          <span class="status-badge status-badge-{{ job.status }}">
+            {{ job.status_label }}
+          </span>
+        </div>
+        {% if job.total %}
+        <div
+          class="chunk-progress"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="{{ job.total }}"
+          aria-valuenow="{{ job.attempted }}"
+          aria-valuetext="{{ job.succeeded }} succeeded, {{ job.failed }} failed, {{ job.pending }} pending"
+        >
+          <span
+            class="chunk-progress-segment chunk-progress-succeeded"
+            style="width: {{ job.succeeded_percent }}%"
+          ></span>
+          <span
+            class="chunk-progress-segment chunk-progress-failed"
+            style="width: {{ job.failed_percent }}%"
+          ></span>
+        </div>
+        <div class="status-muted dictionary-progress-label">
+          <span>
+            {{ job.succeeded }} succeeded · {{ job.failed }} failed ·
+            {{ job.pending }} pending
+          </span>
+          {% if job.updated_at %}
+          <span class="status-updated">Updated {{ job.updated_at }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if job.last_error %}
+        <p class="status-error">{{ job.last_error }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="status-panel">
     <h2>Recent issues</h2>
     {% if status.issues %}
     <div class="issue-list">
