@@ -15,7 +15,13 @@ configure_logging()
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -315,6 +321,36 @@ async def status_content(request: Request):
             ),
         },
     )
+
+
+def _status_action_response(request: Request) -> Response:
+    if request.headers.get("X-Requested-With") == "status-page":
+        return Response(status_code=204)
+    return RedirectResponse(url="/status", status_code=303)
+
+
+async def _run_postprocessing_from_status() -> None:
+    try:
+        await postprocessor.check_and_process(force=True)
+    except Exception:
+        logger.exception("Postprocessing requested from the status page failed")
+
+
+@app.post("/status/postprocessing/run")
+async def run_postprocessing_now(request: Request):
+    postprocessing_enabled = settings.anki.enabled and (
+        settings.postprocessing.text.enabled
+        or settings.postprocessing.audio.enabled
+    )
+    if not postprocessing_enabled:
+        logger.warning(
+            "Postprocessing request from the status page was rejected because "
+            "postprocessing is disabled"
+        )
+        raise HTTPException(status_code=409, detail="Postprocessing is disabled")
+
+    asyncio.create_task(_run_postprocessing_from_status())
+    return _status_action_response(request)
 
 
 @app.post("/upload")

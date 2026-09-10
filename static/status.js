@@ -3,6 +3,7 @@
   const refreshUrl = document.body.dataset.statusContentUrl;
   let statusContent = document.querySelector("[data-status-content]");
   const connectionMessage = document.querySelector("[data-status-connection]");
+  const actionMessage = document.querySelector("[data-status-action-error]");
   let refreshTimer = null;
   let refreshPromise = null;
   let lastRefresh = new Date();
@@ -14,6 +15,24 @@
     if (!document.hidden) {
       refreshTimer = setTimeout(refreshStatus, REFRESH_INTERVAL_MS);
     }
+  }
+
+  async function submitStatusAction(form) {
+    const response = await fetch(form.action, {
+      method: form.method,
+      headers: { "X-Requested-With": "status-page" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (response.ok) return;
+
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      if (typeof payload.detail === "string") message = payload.detail;
+    } catch {
+      // Proxy errors and other non-JSON responses use the status message.
+    }
+    throw new Error(message);
   }
 
   async function refreshStatus() {
@@ -70,6 +89,27 @@
   document.addEventListener("visibilitychange", () => {
     clearTimeout(refreshTimer);
     if (!document.hidden) void refreshStatus();
+  });
+
+  document.addEventListener("submit", async (event) => {
+    const form = event.target.closest("form[data-status-action]");
+    if (!form) return;
+
+    event.preventDefault();
+    clearTimeout(refreshTimer);
+    const submitter = event.submitter;
+    if (submitter) submitter.disabled = true;
+    actionMessage.hidden = true;
+
+    try {
+      await submitStatusAction(form);
+      await refreshStatus();
+    } catch (error) {
+      console.error(error);
+      actionMessage.textContent = `Could not run postprocessing: ${error.message}`;
+      actionMessage.hidden = false;
+      scheduleRefresh();
+    }
   });
 
   scheduleRefresh();

@@ -359,6 +359,7 @@ def _postprocessing_status(postprocessor) -> dict:
         "audio_enabled": audio_enabled,
         "anki_enabled": settings.anki.enabled,
         "waiting_card_count": waiting_card_count,
+        "can_run_now": state == "waiting",
     }
 
 

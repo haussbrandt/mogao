@@ -8,7 +8,18 @@
   </section>
 
   <section class="status-panel">
-    <h2>Postprocessing</h2>
+    <div class="status-panel-heading">
+      <h2>Postprocessing</h2>
+      {% if status.postprocessing.can_run_now %}
+      <form
+        action="{{ url_for('run_postprocessing_now') }}"
+        method="post"
+        data-status-action
+      >
+        <button type="submit" class="status-action-button">Run now</button>
+      </form>
+      {% endif %}
+    </div>
     {% if not status.postprocessing.anki_enabled %}
     <p class="status-empty">Anki integration is disabled.</p>
     {% else %}

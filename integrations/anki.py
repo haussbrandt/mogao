@@ -87,7 +87,7 @@ class Postprocessor:
                 api_key=os.environ["ELEVENLABS_API_KEY"], timeout=60
             )
 
-    async def check_and_process(self):
+    async def check_and_process(self, *, force: bool = False):
         async with self.lock:
             try:
                 await call_anki_async("sync")
@@ -108,8 +108,10 @@ class Postprocessor:
                     self.timer_task = asyncio.create_task(self.start_timer())
 
                 time_since_last = current_time - self.last_timer_reset
-                if len(processing_card_ids) >= self.batch_size or (
-                    len(processing_card_ids) > 0 and time_since_last >= self.timeout
+                if processing_card_ids and (
+                    force
+                    or len(processing_card_ids) >= self.batch_size
+                    or time_since_last >= self.timeout
                 ):
                     logger.info("Starting card postprocessing")
                     await self.run_text_postprocessing(processing_card_ids)

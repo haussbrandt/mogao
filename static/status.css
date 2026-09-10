@@ -109,6 +109,50 @@
   text-transform: uppercase;
 }
 
+.status-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.status-panel-heading h2 {
+  margin-bottom: 0;
+}
+
+.status-panel-heading form {
+  margin: 0;
+}
+
+.status-action-button {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--accent-interactive);
+  color: var(--bg-base);
+  box-shadow: 0 2px 6px var(--shadow);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.status-action-button:hover {
+  background: var(--accent-interactive-hover);
+}
+
+.status-action-button:focus-visible {
+  outline: 2px solid var(--accent-interactive);
+  outline-offset: 3px;
+}
+
+.status-action-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .status-list {
   margin: 0;
 }
@@ -358,6 +402,10 @@
   color: var(--text-body);
   font-size: 0.82rem;
   overflow-wrap: anywhere;
+}
+
+.status-page [data-status-action-error] {
+  margin: 0 0 18px;
 }
 
 .issue-item {
