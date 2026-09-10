@@ -8,36 +8,29 @@
   </section>
 
   <section class="status-panel">
-    <h2>Server</h2>
+    <h2>Postprocessing</h2>
+    {% if not status.postprocessing.anki_enabled %}
+    <p class="status-empty">Anki integration is disabled.</p>
+    {% else %}
     <dl class="status-list">
-      <div><dt>Version</dt><dd>{{ status.server.version }}</dd></div>
-      <div><dt>Uptime</dt><dd>{{ status.server.uptime }}</dd></div>
-      <div><dt>Books</dt><dd>{{ status.server.book_count }}</dd></div>
-      {% if status.server.video_enabled %}
-      <div><dt>Videos</dt><dd>{{ status.server.video_count }}</dd></div>
-      {% endif %}
-    </dl>
-    {% if status.server.version_warning %}
-    <p class="status-warning">{{ status.server.version_warning }}</p>
-    {% endif %}
-  </section>
-
-  <section class="status-panel">
-    <h2>Storage</h2>
-    <div class="storage-grid">
-      {% for filesystem in status.storage %}
-      <div class="storage-item{% if filesystem.low %} storage-low{% endif %}">
-        <div class="storage-heading">
-          <strong>{{ filesystem.label }}</strong>
-          <span>{{ filesystem.free }} free</span>
-        </div>
-        <progress max="100" value="{{ filesystem.used_percent }}"></progress>
-        <div class="status-muted">
-          {{ filesystem.used }} used of {{ filesystem.total }}
-        </div>
+      <div>
+        <dt>State</dt>
+        <dd>{{ status.postprocessing.state_label }}</dd>
       </div>
-      {% endfor %}
-    </div>
+      <div>
+        <dt>Text</dt>
+        <dd>
+          {{ 'Enabled' if status.postprocessing.text_enabled else 'Disabled' }}
+        </dd>
+      </div>
+      <div>
+        <dt>Audio</dt>
+        <dd>
+          {{ 'Enabled' if status.postprocessing.audio_enabled else 'Disabled' }}
+        </dd>
+      </div>
+    </dl>
+    {% endif %}
   </section>
 
   <section class="status-panel">
@@ -115,6 +108,39 @@
     </div>
     {% else %}
     <p class="status-empty">No warnings or errors during this server run.</p>
+    {% endif %}
+  </section>
+
+  <section class="status-panel">
+    <h2>Storage</h2>
+    <div class="storage-grid">
+      {% for filesystem in status.storage %}
+      <div class="storage-item{% if filesystem.low %} storage-low{% endif %}">
+        <div class="storage-heading">
+          <strong>{{ filesystem.label }}</strong>
+          <span>{{ filesystem.free }} free</span>
+        </div>
+        <progress max="100" value="{{ filesystem.used_percent }}"></progress>
+        <div class="status-muted">
+          {{ filesystem.used }} used of {{ filesystem.total }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="status-panel">
+    <h2>Server</h2>
+    <dl class="status-list">
+      <div><dt>Version</dt><dd>{{ status.server.version }}</dd></div>
+      <div><dt>Uptime</dt><dd>{{ status.server.uptime }}</dd></div>
+      <div><dt>Books</dt><dd>{{ status.server.book_count }}</dd></div>
+      {% if status.server.video_enabled %}
+      <div><dt>Videos</dt><dd>{{ status.server.video_count }}</dd></div>
+      {% endif %}
+    </dl>
+    {% if status.server.version_warning %}
+    <p class="status-warning">{{ status.server.version_warning }}</p>
     {% endif %}
   </section>
 </div>

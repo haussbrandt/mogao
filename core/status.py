@@ -13,6 +13,7 @@ from books.library import load_book_cached
 from core.config import PROJECT_ROOT, settings
 from core.logging_config import get_recent_issues
 from core.paths import TEMP_DIRECTORY, get_book_dict_path, get_video_dict_path
+from integrations.anki import get_pending_postprocessing_card_count
 from integrations.llm_processor import load_book_dict, load_video_dict
 from videos.video_library import load_video_cached
 
@@ -321,9 +322,50 @@ def _application_version() -> dict[str, str | None]:
     return {"display": display_version, "warning": warning}
 
 
-def build_status() -> dict:
+def _postprocessing_status(postprocessor) -> dict:
+    text_enabled = settings.postprocessing.text.enabled
+    audio_enabled = settings.postprocessing.audio.enabled
+    enabled = settings.anki.enabled and (text_enabled or audio_enabled)
+    waiting_card_count = None
+
+    if not enabled:
+        state = "disabled"
+    else:
+        try:
+            waiting_card_count = get_pending_postprocessing_card_count()
+        except RuntimeError:
+            state = "unavailable"
+        else:
+            if postprocessor.lock.locked():
+                state = "active"
+            elif waiting_card_count:
+                state = "waiting"
+            else:
+                state = "idle"
+
+    if waiting_card_count is None:
+        state_label = state.replace("_", " ").title()
+    else:
+        card_label = "card" if waiting_card_count == 1 else "cards"
+        state_label = (
+            f"{state.replace('_', ' ').title()} · "
+            f"{waiting_card_count} {card_label}"
+        )
+
+    return {
+        "state": state,
+        "state_label": state_label,
+        "text_enabled": text_enabled,
+        "audio_enabled": audio_enabled,
+        "anki_enabled": settings.anki.enabled,
+        "waiting_card_count": waiting_card_count,
+    }
+
+
+def build_status(postprocessor) -> dict:
     books, videos = _content_inventory()
     dictionaries = _dictionary_status(books, videos)
+    postprocessing = _postprocessing_status(postprocessor)
     storage = _storage_status()
     application_version = _application_version()
     issues = [
@@ -333,26 +375,28 @@ def build_status() -> dict:
     storage_low = any(filesystem["low"] for filesystem in storage)
     dictionary_problem = any(job["status"] == "error" for job in dictionaries)
     dictionary_active = any(
-        job["status"] in {"none", "processing"} for job in dictionaries
+        job["status"] == "processing" for job in dictionaries
     )
+    postprocessing_problem = postprocessing["state"] == "unavailable"
+    postprocessing_active = postprocessing["state"] == "active"
 
-    if storage_low or dictionary_problem:
+    if storage_low or dictionary_problem or postprocessing_problem:
         overall = {
             "state": "attention",
             "label": "Needs attention",
             "detail": "One or more current conditions need attention.",
         }
-    elif dictionary_active:
+    elif dictionary_active or postprocessing_active:
         overall = {
             "state": "working",
             "label": "Working",
-            "detail": "Dictionary generation is in progress or waiting to run.",
+            "detail": "Background work is in progress.",
         }
     else:
         overall = {
             "state": "healthy",
             "label": "All clear",
-            "detail": "No current problems or pending work.",
+            "detail": "No current problems or active background work.",
         }
 
     return {
@@ -360,6 +404,7 @@ def build_status() -> dict:
         "dictionary_enabled": settings.dictionary_generation.enabled,
         "dictionaries": dictionaries,
         "issues": issues,
+        "postprocessing": postprocessing,
         "storage": storage,
         "server": {
             "version": application_version["display"],

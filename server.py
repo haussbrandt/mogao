@@ -295,7 +295,7 @@ async def status_view(request: Request):
         "status.html",
         {
             "request": request,
-            "status": await asyncio.to_thread(build_status),
+            "status": await asyncio.to_thread(build_status, postprocessor),
             "video_enabled": settings.video.enabled,
         },
     )
@@ -308,7 +308,7 @@ async def status_content(request: Request):
         "status_content.html",
         {
             "request": request,
-            "status": await asyncio.to_thread(build_status),
+            "status": await asyncio.to_thread(build_status, postprocessor),
         },
     )
 

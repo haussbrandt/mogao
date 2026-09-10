@@ -371,6 +371,24 @@ async def call_anki_async(action, *, request_timeout=None, **params):
     )
 
 
+def get_pending_postprocessing_card_count() -> int:
+    tags = []
+    if settings.postprocessing.text.enabled:
+        tags.append(settings.anki.tags.needs_processing)
+    if settings.postprocessing.audio.enabled:
+        tags.append(settings.anki.tags.needs_audio)
+    if not tags:
+        return 0
+
+    card_ids = _get_anki_result(
+        "findCards",
+        query=_build_anki_filter_query((), tuple(tags)),
+    )
+    if not isinstance(card_ids, list):
+        raise RuntimeError("AnkiConnect returned an invalid card list")
+    return len(card_ids)
+
+
 def ensure_anki_available() -> None:
     try:
         response = call_anki("version", request_timeout=ANKI_REQUEST_TIMEOUT_SECONDS)
