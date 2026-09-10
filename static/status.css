@@ -320,6 +320,17 @@
   overflow-wrap: anywhere;
 }
 
+.dictionary-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.dictionary-heading-actions form {
+  margin: 0;
+}
+
 .status-kind {
   display: block;
   margin-bottom: 2px;

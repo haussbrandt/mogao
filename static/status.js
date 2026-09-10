@@ -106,7 +106,8 @@
       await refreshStatus();
     } catch (error) {
       console.error(error);
-      actionMessage.textContent = `Could not run postprocessing: ${error.message}`;
+      const actionLabel = form.dataset.actionLabel || "complete action";
+      actionMessage.textContent = `Could not ${actionLabel}: ${error.message}`;
       actionMessage.hidden = false;
       scheduleRefresh();
     }

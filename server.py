@@ -48,6 +48,8 @@ from integrations.llm_processor import (
     load_book_dict,
     process_book_background,
     resume_interrupted_processing,
+    schedule_book_dictionary_retry,
+    schedule_video_dictionary_retry,
 )
 from videos import video_router
 
@@ -350,6 +352,34 @@ async def run_postprocessing_now(request: Request):
         raise HTTPException(status_code=409, detail="Postprocessing is disabled")
 
     asyncio.create_task(_run_postprocessing_from_status())
+    return _status_action_response(request)
+
+
+@app.post("/status/dictionaries/books/{item_id}/retry")
+async def retry_book_dictionary_job(request: Request, item_id: UUID):
+    if not settings.dictionary_generation.enabled:
+        raise HTTPException(status_code=409, detail="Dictionary generation is disabled")
+
+    try:
+        retry_scheduled = schedule_book_dictionary_retry(str(item_id))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if not retry_scheduled:
+        raise HTTPException(status_code=409, detail="Dictionary job is not retryable")
+    return _status_action_response(request)
+
+
+@app.post("/status/dictionaries/videos/{item_id}/retry")
+async def retry_video_dictionary_job(request: Request, item_id: UUID):
+    if not settings.dictionary_generation.enabled:
+        raise HTTPException(status_code=409, detail="Dictionary generation is disabled")
+
+    try:
+        retry_scheduled = schedule_video_dictionary_retry(str(item_id))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Video or subtitles not found")
+    if not retry_scheduled:
+        raise HTTPException(status_code=409, detail="Dictionary job is not retryable")
     return _status_action_response(request)
 
 

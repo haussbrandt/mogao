@@ -26,6 +26,7 @@ MIN_INTERVAL_S = 60.0 / RATE_LIMIT_PER_MIN
 # Global rate-limiter (shared across all concurrent processing tasks)
 _rate_lock: Optional[asyncio.Lock] = None
 _last_request_at: float = 0.0
+_dictionary_retry_tasks: set[asyncio.Task] = set()
 
 
 def _error_summary(error: Exception) -> str:
@@ -429,7 +430,7 @@ async def _run_dictionary_job(
         else:
             logger.warning(
                 f"{job_label}: dictionary paused with errors; "
-                "it will be retried after the server restart"
+                "retry it from the status page or restart the server"
             )
         save_state(item_id, state)
     except Exception as error:
@@ -442,6 +443,54 @@ async def _run_dictionary_job(
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _mark_dictionary_retry_started(item_id: str, state: dict, save_state) -> None:
+    state["status"] = "processing"
+    state["failed_chunks"] = []
+    state.pop("last_error", None)
+    state["updated_at"] = datetime.now().isoformat()
+    save_state(item_id, state)
+
+
+def _track_dictionary_retry(retry) -> None:
+    task = asyncio.create_task(retry)
+    _dictionary_retry_tasks.add(task)
+    task.add_done_callback(_dictionary_retry_tasks.discard)
+
+
+def schedule_book_dictionary_retry(book_id: str) -> bool:
+    if not settings.dictionary_generation.enabled:
+        return False
+
+    state = load_book_dict(book_id)
+    if state.get("status") != "error":
+        return False
+
+    book_path = get_book_path(book_id, "book.pkl")
+    with open(book_path, "rb") as file:
+        book = pickle.load(file)
+
+    _mark_dictionary_retry_started(book_id, state, _save_book_dict)
+    _track_dictionary_retry(process_book_background(book_id, book, resume=True))
+    return True
+
+
+def schedule_video_dictionary_retry(video_id: str) -> bool:
+    if not settings.dictionary_generation.enabled or not settings.video.enabled:
+        return False
+
+    state = load_video_dict(video_id)
+    if state.get("status") != "error":
+        return False
+
+    subtitles_path = get_video_path(video_id, "subtitles.srt")
+    if not os.path.isfile(subtitles_path):
+        raise FileNotFoundError(subtitles_path)
+
+    _mark_dictionary_retry_started(video_id, state, _save_video_dict)
+    _track_dictionary_retry(process_subtitles_background(video_id, resume=True))
+    return True
 
 
 async def resume_interrupted_processing(*, include_videos: bool = True) -> None:

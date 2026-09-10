@@ -15,6 +15,7 @@
         action="{{ url_for('run_postprocessing_now') }}"
         method="post"
         data-status-action
+        data-action-label="run postprocessing"
       >
         <button type="submit" class="status-action-button">Run now</button>
       </form>
@@ -59,9 +60,27 @@
             <span class="status-kind">{{ job.kind }}</span>
             <strong>{{ job.title }}</strong>
           </div>
-          <span class="status-badge status-badge-{{ job.status }}">
-            {{ job.status_label }}
-          </span>
+          <div class="dictionary-heading-actions">
+            <span class="status-badge status-badge-{{ job.status }}">
+              {{ job.status_label }}
+            </span>
+            {% if job.status == 'error' %}
+            <form
+              action="{{ url_for('retry_book_dictionary_job' if job.kind == 'Book' else 'retry_video_dictionary_job', item_id=job.id) }}"
+              method="post"
+              data-status-action
+              data-action-label="retry dictionary generation"
+            >
+              <button
+                type="submit"
+                class="status-action-button"
+                aria-label="Retry dictionary generation for {{ job.title }}"
+              >
+                Retry
+              </button>
+            </form>
+            {% endif %}
+          </div>
         </div>
         {% if job.total %}
         <div
