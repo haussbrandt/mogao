@@ -555,9 +555,17 @@ def _validate_anki_model_fields() -> None:
             f"{settings.anki.model}"
         )
 
+    required_fields = settings.anki.fields.model_dump()
+    if not settings.postprocessing.audio.enabled:
+        required_fields.pop("word_audio")
+        if not settings.video.enabled:
+            required_fields.pop("sentence_audio")
+    if not settings.video.enabled:
+        required_fields.pop("sentence_image")
+
     missing_fields = {
         config_name: field_name
-        for config_name, field_name in settings.anki.fields.model_dump().items()
+        for config_name, field_name in required_fields.items()
         if field_name not in model_fields
     }
     if missing_fields:

@@ -33,6 +33,8 @@ cd mogao
 
 The quickstart script will handle some of the required things, but there are still some steps you need to perform manually (like set up the API keys, modify the Anki configuration or disable features you don't want to use). The script will print a list of these steps at the end.
 
+By default, Mogao will create a new note type and deck for you. You can modify config.toml to use a preexisiting one or change the name or field names of the new one.
+
 ## Design philosophy
 
 Mogao was created with the intention of making a tool specifically tailored to my needs. That's why you won't find a settings page with themes, fonts and margin sizes, or support for Japanese here. If there is a choice to be made, it's already been made and it's the only way to use the app (barring a few config settings before startup). And if these choices are the same ones you'd make, Mogao is perfect for you. The only choice left is the most important one: which book to read.
@@ -85,6 +87,8 @@ uses `POSTPROCESSING_API_KEY`, while book and video dictionary generation use
 You can configure certain features of Mogao like the Anki deck and field names, paths, AI models used etc. in `config.toml`.
 
 If you don't want to use specific features, you can disable them by setting their `enabled` value to `false`.
+
+If you disable certain features like audio postprocessing or video, some Anki fields will stop being required in the card model. They still have to be specified in the config (they can be empty strings or any value), but they will get ignored.
 
 The text post-processing and dictionary generation sections each accept their
 own OpenAI-compatible `base_url` and `llm` model. This allows the two features
