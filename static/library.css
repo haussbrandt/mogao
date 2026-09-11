@@ -64,6 +64,7 @@ h1 {
   font-weight: bold;
   color: var(--text-emphasis);
   margin-bottom: 10px;
+  overflow-wrap: anywhere;
 }
 .book-meta,
 .video-meta {
@@ -177,7 +178,9 @@ h1 {
 
 .generated-cover-title {
   display: -webkit-box;
+  max-width: 100%;
   overflow: hidden;
+  overflow-wrap: anywhere;
   font-size: 1.08rem;
   font-weight: 700;
   line-height: 1.3;
@@ -212,6 +215,7 @@ h1 {
   color: var(--text-body);
   margin-bottom: 20px;
   padding: 10px;
+  overflow-wrap: anywhere;
 }
 
 .upload-status.error {
