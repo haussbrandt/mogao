@@ -6,7 +6,13 @@ Mogao is a mobile-first EPUB reader and video player for Chinese learners with i
   <img
     src="docs/assets/screenshot_popup.jpg"
     alt="A word selected in the ebook reader with its dictionary definition displayed"
-    width="240"
+    height="360"
+  >
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img
+    src="docs/assets/screenshot_video_player.png"
+    alt="Watching a video with interactive Chinese subtitles"
+    height="360"
   >
 </p>
 
