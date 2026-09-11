@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from functools import lru_cache
 
@@ -80,6 +81,57 @@ class Postprocessor:
         self.lock = asyncio.Lock()
         self.timer_task = None
         self.eleven_client = None
+        self._failed_card_ids_lock = threading.Lock()
+        self._failed_card_ids_revision = 0
+        self._failed_text_card_ids: frozenset[int] = frozenset()
+        self._failed_audio_card_ids: frozenset[int] = frozenset()
+
+    @property
+    def failed_card_ids(self) -> frozenset[int]:
+        with self._failed_card_ids_lock:
+            return self._failed_text_card_ids | self._failed_audio_card_ids
+
+    def _set_failed_text_card_ids(self, card_ids) -> None:
+        with self._failed_card_ids_lock:
+            self._failed_text_card_ids = frozenset(card_ids)
+            self._failed_card_ids_revision += 1
+
+    def _set_failed_audio_card_ids(self, card_ids) -> None:
+        with self._failed_card_ids_lock:
+            self._failed_audio_card_ids = frozenset(card_ids)
+            self._failed_card_ids_revision += 1
+
+    def _retain_failed_text_card_ids(self, card_ids) -> None:
+        with self._failed_card_ids_lock:
+            self._failed_text_card_ids &= frozenset(card_ids)
+            self._failed_card_ids_revision += 1
+
+    def _retain_failed_audio_card_ids(self, card_ids) -> None:
+        with self._failed_card_ids_lock:
+            self._failed_audio_card_ids &= frozenset(card_ids)
+            self._failed_card_ids_revision += 1
+
+    def reconcile_failed_card_ids(self) -> int:
+        """Drop resolved failures and return the number of cards still pending."""
+        with self._failed_card_ids_lock:
+            revision = self._failed_card_ids_revision
+
+        pending_text_card_ids = (
+            _get_card_ids_for_tags((settings.anki.tags.needs_processing,))
+            if settings.postprocessing.text.enabled
+            else frozenset()
+        )
+        pending_audio_card_ids = (
+            _get_card_ids_for_tags((settings.anki.tags.needs_audio,))
+            if settings.postprocessing.audio.enabled
+            else frozenset()
+        )
+        with self._failed_card_ids_lock:
+            if revision == self._failed_card_ids_revision:
+                self._failed_text_card_ids &= pending_text_card_ids
+                self._failed_audio_card_ids &= pending_audio_card_ids
+                self._failed_card_ids_revision += 1
+        return len(pending_text_card_ids | pending_audio_card_ids)
 
     def initialize_clients(self) -> None:
         if settings.postprocessing.audio.enabled:
@@ -97,6 +149,7 @@ class Postprocessor:
                 processing_card_ids = await call_anki_async(
                     "findCards", query=f"tag:{settings.anki.tags.needs_processing}"
                 )
+                self._retain_failed_text_card_ids(processing_card_ids)
                 logger.info(
                     f"Cards waiting for postprocessing: {len(processing_card_ids)}"
                 )
@@ -127,6 +180,7 @@ class Postprocessor:
                         "findCards",
                         query=f"tag:{settings.anki.tags.needs_processing}",
                     )
+                    self._retain_failed_text_card_ids(processing_card_ids)
 
                     if processing_card_ids:
                         logger.info(
@@ -147,9 +201,14 @@ class Postprocessor:
                 audio_card_ids = await call_anki_async(
                     "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
                 )
+                self._retain_failed_audio_card_ids(audio_card_ids)
                 logger.info(f"Cards waiting for audio: {len(audio_card_ids)}")
 
                 await self.run_audio_postprocessing(audio_card_ids)
+                audio_card_ids = await call_anki_async(
+                    "findCards", query=f"tag:{settings.anki.tags.needs_audio}"
+                )
+                self._retain_failed_audio_card_ids(audio_card_ids)
 
     async def start_timer(self):
         try:
@@ -164,21 +223,27 @@ class Postprocessor:
                 self.timer_task = None
 
     async def run_text_postprocessing(self, card_ids):
-        cards = await call_anki_async("cardsInfo", cards=card_ids)
-        batch_data = []
-        for card in cards:
-            batch_data.append(
-                {
-                    "id": card["note"],
-                    "source_text": card["fields"][settings.anki.fields.sentence][
-                        "value"
-                    ],
-                    "source_word": card["fields"][settings.anki.fields.word]["value"],
-                }
-            )
-        api_key = os.environ["POSTPROCESSING_API_KEY"]
-        results = await call_llm_batch(api_key, batch_data)
-        if results:
+        failed_card_ids = set(card_ids)
+        try:
+            cards = await call_anki_async("cardsInfo", cards=card_ids)
+            card_ids_by_note = {}
+            batch_data = []
+            for card in cards:
+                note_id = card["note"]
+                card_ids_by_note.setdefault(note_id, set()).add(card["cardId"])
+                batch_data.append(
+                    {
+                        "id": note_id,
+                        "source_text": card["fields"][settings.anki.fields.sentence][
+                            "value"
+                        ],
+                        "source_word": card["fields"][settings.anki.fields.word][
+                            "value"
+                        ],
+                    }
+                )
+            api_key = os.environ["POSTPROCESSING_API_KEY"]
+            results = await call_llm_batch(api_key, batch_data)
             for result in results:
                 try:
                     note_id = result["id"]
@@ -199,13 +264,21 @@ class Postprocessor:
                         notes=[note_id],
                         tags=settings.anki.tags.needs_processing,
                     )
+                    failed_card_ids.difference_update(
+                        card_ids_by_note.get(note_id, ())
+                    )
                     logger.info(f"Processed Anki note {note_id}")
                 except Exception:
                     logger.exception("Failed to postprocess an Anki note")
-            try:
-                await call_anki_async("sync")
-            except RuntimeError:
-                logger.exception("Anki synchronization failed after text postprocessing")
+            if results:
+                try:
+                    await call_anki_async("sync")
+                except RuntimeError:
+                    logger.exception(
+                        "Anki synchronization failed after text postprocessing"
+                    )
+        finally:
+            self._set_failed_text_card_ids(failed_card_ids)
 
     @lru_cache(maxsize=20)
     def call_elevenlabs_api(self, sentence_clean):
@@ -218,12 +291,22 @@ class Postprocessor:
 
     async def run_audio_postprocessing(self, card_ids):
         # TTS, audio files, ffmpeg and AnkiConnect all perform blocking I/O.
-        await asyncio.to_thread(self._run_audio_postprocessing, card_ids)
+        try:
+            failed_card_ids = await asyncio.to_thread(
+                self._run_audio_postprocessing, card_ids
+            )
+        except Exception:
+            self._set_failed_audio_card_ids(card_ids)
+            raise
+        else:
+            self._set_failed_audio_card_ids(failed_card_ids)
 
     def _run_audio_postprocessing(self, card_ids):
+        failed_card_ids = set(card_ids)
         cards = _get_anki_result("cardsInfo", cards=card_ids)
         for card in cards:
             try:
+                card_id = card["cardId"]
                 note_id = card["note"]
                 source_text = card["fields"][settings.anki.fields.sentence]["value"]
                 source_word = card["fields"][settings.anki.fields.word]["value"]
@@ -280,6 +363,7 @@ class Postprocessor:
                     notes=[note_id],
                     tags=settings.anki.tags.needs_audio,
                 )
+                failed_card_ids.discard(card_id)
                 logger.info(f"Added audio to Anki note {note_id}")
                 if os.path.exists(word_audio_path):
                     os.remove(word_audio_path)
@@ -294,6 +378,7 @@ class Postprocessor:
             _get_anki_result("sync", request_timeout=ANKI_SYNC_TIMEOUT_SECONDS)
         except RuntimeError:
             logger.exception("Anki synchronization failed after audio postprocessing")
+        return failed_card_ids
 
 
 _POSTPROCESSING_RESPONSE_SCHEMA = {
@@ -373,22 +458,26 @@ async def call_anki_async(action, *, request_timeout=None, **params):
     )
 
 
+def _get_card_ids_for_tags(tags: tuple[str, ...]) -> frozenset[int]:
+    if not tags:
+        return frozenset()
+
+    card_ids = _get_anki_result(
+        "findCards",
+        query=_build_anki_filter_query((), tags),
+    )
+    if not isinstance(card_ids, list):
+        raise RuntimeError("AnkiConnect returned an invalid card list")
+    return frozenset(card_ids)
+
+
 def get_pending_postprocessing_card_count() -> int:
     tags = []
     if settings.postprocessing.text.enabled:
         tags.append(settings.anki.tags.needs_processing)
     if settings.postprocessing.audio.enabled:
         tags.append(settings.anki.tags.needs_audio)
-    if not tags:
-        return 0
-
-    card_ids = _get_anki_result(
-        "findCards",
-        query=_build_anki_filter_query((), tuple(tags)),
-    )
-    if not isinstance(card_ids, list):
-        raise RuntimeError("AnkiConnect returned an invalid card list")
-    return len(card_ids)
+    return len(_get_card_ids_for_tags(tuple(tags)))
 
 
 def ensure_anki_available() -> None:

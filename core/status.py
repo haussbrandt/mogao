@@ -326,24 +326,35 @@ def _postprocessing_status(postprocessor) -> dict:
     text_enabled = settings.postprocessing.text.enabled
     audio_enabled = settings.postprocessing.audio.enabled
     enabled = settings.anki.enabled and (text_enabled or audio_enabled)
+    failed_card_count = len(postprocessor.failed_card_ids)
     waiting_card_count = None
+    active = postprocessor.lock.locked()
 
     if not enabled:
         state = "disabled"
     else:
         try:
-            waiting_card_count = get_pending_postprocessing_card_count()
+            if failed_card_count and not active:
+                waiting_card_count = postprocessor.reconcile_failed_card_ids()
+                failed_card_count = len(postprocessor.failed_card_ids)
+            else:
+                waiting_card_count = get_pending_postprocessing_card_count()
         except RuntimeError:
             state = "unavailable"
         else:
-            if postprocessor.lock.locked():
+            if active:
                 state = "active"
+            elif failed_card_count:
+                state = "error"
             elif waiting_card_count:
                 state = "waiting"
             else:
                 state = "idle"
 
-    if waiting_card_count is None:
+    if state == "error":
+        card_label = "card" if failed_card_count == 1 else "cards"
+        state_label = f"Error · {failed_card_count} {card_label}"
+    elif waiting_card_count is None:
         state_label = state.replace("_", " ").title()
     else:
         card_label = "card" if waiting_card_count == 1 else "cards"
@@ -358,8 +369,9 @@ def _postprocessing_status(postprocessor) -> dict:
         "text_enabled": text_enabled,
         "audio_enabled": audio_enabled,
         "anki_enabled": settings.anki.enabled,
+        "failed_card_count": failed_card_count,
         "waiting_card_count": waiting_card_count,
-        "can_run_now": state == "waiting",
+        "can_run_now": state in {"waiting", "error"} and bool(waiting_card_count),
     }
 
 
@@ -389,7 +401,10 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
     )
     video_problem = any(job["status"] == "failed" for job in video_jobs)
     video_active = any(job["status"] == "processing" for job in video_jobs)
-    postprocessing_problem = postprocessing["state"] == "unavailable"
+    postprocessing_problem = (
+        postprocessing["state"] == "unavailable"
+        or postprocessing["failed_card_count"] > 0
+    )
     postprocessing_active = postprocessing["state"] == "active"
     background_work_active = (
         dictionary_active or video_active or postprocessing_active
