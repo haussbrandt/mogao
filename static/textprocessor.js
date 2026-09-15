@@ -47,11 +47,56 @@ function getBlockParent(node) {
   );
 }
 
+function getSentenceSuffix(startNode, startOffset) {
+  const originBlock = getBlockParent(startNode);
+  const lookupRoot = getLookupRoot(startNode);
+  const walker = createReadingTextWalker(lookupRoot);
+  walker.currentNode = startNode;
+
+  let node = startNode;
+  let offset = startOffset;
+  let text = "";
+
+  while (true) {
+    if (offset === node.textContent.length) {
+      const nextNode = walker.nextNode();
+      if (!nextNode || getBlockParent(nextNode) !== originBlock) break;
+      node = nextNode;
+      offset = 0;
+      continue;
+    }
+
+    const char = node.textContent[offset];
+    if (char === '"' || char === "'") {
+      // Straight quotes can also open the next sentence. Only consume a
+      // closing quote when a matching quote precedes it in this block.
+      const backWalker = createReadingTextWalker(lookupRoot);
+      backWalker.currentNode = node;
+      let previousNode = node;
+      let precedingText = node.textContent.substring(0, offset);
+      let quoteCount = 0;
+      while (previousNode) {
+        quoteCount += precedingText.split(char).length - 1;
+        previousNode = backWalker.previousNode();
+        if (!previousNode || getBlockParent(previousNode) !== originBlock) break;
+        precedingText = previousNode.textContent;
+      }
+      if (quoteCount % 2 === 0) break;
+    } else if (!/[”’»」』)）】\]\s]/.test(char)) {
+      break;
+    }
+
+    text += char;
+    offset++;
+  }
+
+  return { text, node, offset };
+}
+
 function getSentence(startNode, startOffset) {
 	if (!isReadingTextNode(startNode)) return "";
 
 	const terminators = /[。！？.!?]/;
-	const closingQuotes = /[""''»」)）】\]]/;
 	const originBlock = getBlockParent(startNode);
 	const lookupRoot = getLookupRoot(startNode);
 
@@ -65,7 +110,9 @@ function getSentence(startNode, startOffset) {
 	let splitIdx = partial.split("").reverse().join("").search(terminators);
 
 	if (splitIdx !== -1) {
-	  leftText = partial.substring(partial.length - splitIdx);
+	  const boundaryOffset = partial.length - splitIdx;
+	  const suffix = getSentenceSuffix(curr, boundaryOffset);
+	  leftText = partial.substring(boundaryOffset + suffix.text.length);
 	} else {
 	  leftText = partial;
 	  while ((curr = backWalker.previousNode())) {
@@ -74,7 +121,11 @@ function getSentence(startNode, startOffset) {
 		let txt = curr.textContent;
 		let sIdx = txt.split("").reverse().join("").search(terminators);
 		if (sIdx !== -1) {
-		  leftText = txt.substring(txt.length - sIdx) + leftText;
+		  const boundaryOffset = txt.length - sIdx;
+		  const suffix = getSentenceSuffix(curr, boundaryOffset);
+		  leftText = (txt.substring(boundaryOffset) + leftText).substring(
+		    suffix.text.length,
+		  );
 		  break;
 		} else {
 		  leftText = txt + leftText;
@@ -105,29 +156,12 @@ function getSentence(startNode, startOffset) {
 
 		let chunk = textToProcess.substring(0, endIdx);
 
-		// Look ahead for closing quotes/spaces
-		let tempWalker = createReadingTextWalker(lookupRoot);
-		tempWalker.currentNode = curr;
-		let peekNode = curr;
-		let peekTxt = textToProcess.substring(endIdx);
-		let extraStr = "";
-
-		while (true) {
-		  if (!peekTxt) {
-			peekNode = tempWalker.nextNode();
-			if (!peekNode || getBlockParent(peekNode) !== originBlock)
-			  break;
-			peekTxt = peekNode.textContent;
-			continue;
-		  }
-		  let char = peekTxt[0];
-		  if (char.match(closingQuotes) || char.match(/\s/)) {
-			extraStr += char;
-			peekTxt = peekTxt.substring(1);
-		  } else {
-			break;
-		  }
-		}
+		// Keep closing quotes/spaces on the same side of both boundaries.
+		const boundaryOffset = curr.textContent.length - textToProcess.length + endIdx;
+		const suffix = getSentenceSuffix(curr, boundaryOffset);
+		const peekNode = suffix.node;
+		const peekTxt = peekNode.textContent.substring(suffix.offset);
+		const extraStr = suffix.text;
 
 		let candidateSentence = (
 		  leftText +
