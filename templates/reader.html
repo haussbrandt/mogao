@@ -59,7 +59,8 @@
           {% set is_active = current_chapter.href == item.file_href %}
           <a
             href="#"
-            onclick="findAndGo('{{ item.file_href }}')"
+            data-file-href="{{ item.file_href }}"
+            onclick="findAndGo(this.dataset.fileHref)"
             class="toc-link {% if is_active %}active{% endif %}"
           >
             {{ item.title }}
@@ -123,7 +124,7 @@
         knownWords: {{ known_words | tojson }},
         spineMap: {
           {% for ch in book.spine %}
-          "{{ ch.href }}": {{ ch.order }},
+          {{ ch.href | tojson }}: {{ ch.order }},
           {% endfor %}
         },
         chapter_lengths: {{ book.spine | map(attribute='chapter_characters') | list | tojson }}
