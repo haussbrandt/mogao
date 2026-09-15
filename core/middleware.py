@@ -12,10 +12,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
+for name in ("MOGAO_ADMIN_USERNAME", "MOGAO_ADMIN_HASH", "MOGAO_SESSION_SECRET"):
+    if not os.environ.get(name, "").strip():
+        raise RuntimeError(f"{name} must be set in .env. Run ./quickstart.sh.")
+
 COOKIE_NAME = "session"
 SESSION_SECRET = os.environ[
     "MOGAO_SESSION_SECRET"
 ]  # generate with: secrets.token_hex(32)
+if len(SESSION_SECRET.strip()) < 32:
+    raise RuntimeError("MOGAO_SESSION_SECRET must contain at least 32 characters.")
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 
