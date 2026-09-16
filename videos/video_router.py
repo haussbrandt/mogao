@@ -23,7 +23,7 @@ from core.dependencies import postprocessor, templates
 from core.paths import get_video_path, get_video_progress_path, unique_temp_path
 from integrations.anki import call_anki_async, get_anki_word_sets
 from integrations.llm_processor import load_video_dict, process_subtitles_background
-from videos.video import Video, cut_audio, generate_video, take_screenshot
+from videos.video import Video, cut_audio, generate_video, run_media_command, take_screenshot
 from videos.video_library import (
     load_video_cached,
     load_video_progress,
@@ -43,6 +43,7 @@ ALLOWED_SUBTITLE_EXTENSIONS = (".srt",)
 CHUNK_UPLOAD_PATH = "video_uploads"
 CHUNK_SIZE = 50 * 1024 * 1024
 PROCESSING_JOB_RETENTION_SECONDS = 60 * 60
+DOWNLOAD_TIMEOUT_SECONDS = 60 * 60
 processing_jobs: dict[UUID, dict] = {}
 
 
@@ -442,6 +443,11 @@ def pick_best_subtitle(temp_filename: str | os.PathLike[str]) -> str | None:
 async def download_and_process(url: str):
     try:
         video_id, has_subtitles = await asyncio.to_thread(process_video_download, url)
+    except subprocess.TimeoutExpired as error:
+        logger.error(
+            "Video download or processing timed out after %s seconds", error.timeout
+        )
+        return
     except Exception as error:
         # The HTTP response has already been sent; failures must stay in this job.
         logger.exception(
@@ -464,11 +470,19 @@ def process_video_download(url: str) -> tuple[str, bool]:
 
 
 def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
-    result = subprocess.run(
+    result = run_media_command(
         [
             sys.executable,
             "-m",
             "yt_dlp",
+            "--socket-timeout",
+            "30",
+            "--retries",
+            "3",
+            "--fragment-retries",
+            "3",
+            "--extractor-retries",
+            "3",
             "-f",
             "bestvideo[height<=1080][vcodec^=avc][ext=mp4]+bestaudio[acodec=aac]/bestvideo[vcodec^=hev][ext=mp4]+bestaudio[acodec=aac]/bestvideo+bestaudio",
             "--merge-output-format",
@@ -485,9 +499,7 @@ def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
             temp_filename,
             url,
         ],
-        capture_output=True,
-        text=True,
-        check=True,
+        timeout=DOWNLOAD_TIMEOUT_SECONDS,
     )
     titles = result.stdout.strip().splitlines()
     if not titles or not temp_filename.is_file():

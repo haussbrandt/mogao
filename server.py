@@ -52,6 +52,7 @@ from integrations.llm_processor import (
     schedule_video_dictionary_retry,
 )
 from videos import video_router
+from videos.video import manage_media_processes
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,10 @@ async def lifespan(app: FastAPI):
         )
     if settings.video.enabled:
         asyncio.create_task(video_router.cleanup_processing_jobs())
-    yield
+    # Uvicorn drains background jobs before lifespan teardown, so their detached
+    # processes must also be stopped directly when a shutdown signal arrives.
+    with manage_media_processes():
+        yield
 
 
 app = FastAPI(lifespan=lifespan)

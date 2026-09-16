@@ -3,9 +3,12 @@ import logging
 import os
 import pickle
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +17,65 @@ from core.paths import get_video_path, unique_temp_path
 
 
 logger = logging.getLogger(__name__)
+
+PROBE_TIMEOUT_SECONDS = 30
+TRANSCODE_TIMEOUT_SECONDS = 2 * 60 * 60
+THUMBNAIL_TIMEOUT_SECONDS = 60
+
+_media_processes: set[subprocess.Popen[str]] = set()
+_media_process_lock = threading.RLock()
+_media_shutdown = False
+
+
+def _kill_media_process(process: subprocess.Popen[str]) -> None:
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except ProcessLookupError:
+        pass
+
+
+def _shutdown_media_processes() -> None:
+    global _media_shutdown
+    with _media_process_lock:
+        _media_shutdown = True
+        for process in tuple(_media_processes):
+            _kill_media_process(process)
+
+
+@contextmanager
+def manage_media_processes():
+    """Stop detached commands before the server waits for background jobs."""
+    global _media_shutdown
+    with _media_process_lock:
+        _media_shutdown = False
+
+    previous_handlers = {}
+
+    def handle_shutdown(signum, frame):
+        _shutdown_media_processes()
+        previous_handler = previous_handlers[signum]
+        if callable(previous_handler):
+            previous_handler(signum, frame)
+        elif previous_handler == signal.SIG_DFL:
+            signal.signal(signum, signal.SIG_DFL)
+            signal.raise_signal(signum)
+
+    try:
+        if threading.current_thread() is threading.main_thread():
+            shutdown_signals = [signal.SIGINT, signal.SIGTERM]
+            if hasattr(signal, "SIGBREAK"):
+                shutdown_signals.append(signal.SIGBREAK)
+            for signum in shutdown_signals:
+                previous_handlers[signum] = signal.getsignal(signum)
+                signal.signal(signum, handle_shutdown)
+        yield
+    finally:
+        _shutdown_media_processes()
+        for signum, previous_handler in previous_handlers.items():
+            signal.signal(signum, previous_handler)
 
 
 @dataclass
@@ -39,8 +101,48 @@ class Video:
     cover_image: str | None = None
 
 
+def run_media_command(
+    command: list[str | os.PathLike[str]], *, timeout: float
+) -> subprocess.CompletedProcess[str]:
+    """Run a bounded media command, killing its process group on POSIX on failure."""
+    with _media_process_lock:
+        if _media_shutdown:
+            raise RuntimeError("Media processing is shutting down")
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            start_new_session=os.name == "posix",
+        )
+        _media_processes.add(process)
+        # A main-thread signal can arrive during Popen, before registration.
+        if _media_shutdown:
+            _kill_media_process(process)
+    try:
+        with process:
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            except BaseException:
+                # yt-dlp may have started FFmpeg. Stop children too, before the
+                # caller removes temporary files. Reap the parent without waiting
+                # for EOF on pipes that an escaped child might still hold open.
+                _kill_media_process(process)
+                process.wait()
+                raise
+    finally:
+        with _media_process_lock:
+            _media_processes.discard(process)
+
+    result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    result.check_returncode()
+    return result
+
+
 def probe_video_codec(path: str | os.PathLike[str]) -> str:
-    result = subprocess.run(
+    result = run_media_command(
         [
             "ffprobe",
             "-v",
@@ -53,15 +155,13 @@ def probe_video_codec(path: str | os.PathLike[str]) -> str:
             "default=noprint_wrappers=1:nokey=1",
             path,
         ],
-        capture_output=True,
-        text=True,
-        check=True,
+        timeout=PROBE_TIMEOUT_SECONDS,
     )
     return result.stdout.strip()
 
 
 def probe_audio_codec(path: str | os.PathLike[str]) -> str:
-    result = subprocess.run(
+    result = run_media_command(
         [
             "ffprobe",
             "-v",
@@ -74,9 +174,7 @@ def probe_audio_codec(path: str | os.PathLike[str]) -> str:
             "default=noprint_wrappers=1:nokey=1",
             path,
         ],
-        capture_output=True,
-        text=True,
-        check=True,
+        timeout=PROBE_TIMEOUT_SECONDS,
     )
     return result.stdout.strip()
 
@@ -94,9 +192,7 @@ def generate_video(
         "-show_streams",
         path,
     ]
-    result = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-    )
+    result = run_media_command(cmd, timeout=PROBE_TIMEOUT_SECONDS)
     metadata = json.loads(result.stdout)
 
     file_size = metadata["format"]["size"]
@@ -157,7 +253,7 @@ def generate_video(
                 "-y",
                 video_output_path,
             ]
-        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        run_media_command(ffmpeg_cmd, timeout=TRANSCODE_TIMEOUT_SECONDS)
         os.remove(path)
 
         # Generate a thumbnail
@@ -174,9 +270,7 @@ def generate_video(
             cover_output_path,
         ]
 
-        subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
-        )
+        run_media_command(cmd, timeout=THUMBNAIL_TIMEOUT_SECONDS)
 
         processed_video = Video(
             metadata=metadata,
