@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import AnyHttpUrl, BaseModel
 
 from core.config import settings
 from core.dependencies import postprocessor, templates
@@ -475,6 +475,9 @@ def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
             sys.executable,
             "-m",
             "yt_dlp",
+            "--no-playlist",
+            "--playlist-items",
+            "1",
             "--socket-timeout",
             "30",
             "--retries",
@@ -497,6 +500,7 @@ def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
             "--no-simulate",
             "-o",
             temp_filename,
+            "--",
             url,
         ],
         timeout=DOWNLOAD_TIMEOUT_SECONDS,
@@ -527,15 +531,12 @@ def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
 
 
 class DownloadRequest(BaseModel):
-    url: str
+    url: AnyHttpUrl
 
 
 @router.post("/download-video")
 async def download_video(request: DownloadRequest, background_tasks: BackgroundTasks):
-    if not request.url:
-        raise HTTPException(status_code=400, detail="No URL provided")
-
-    background_tasks.add_task(download_and_process, request.url)
+    background_tasks.add_task(download_and_process, str(request.url))
     return {"status": "queued"}
 
 
