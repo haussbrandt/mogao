@@ -8,8 +8,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
@@ -437,48 +439,67 @@ def pick_best_subtitle(temp_filename: str | os.PathLike[str]) -> str | None:
     return None
 
 
-# TODO: refactor
 async def download_and_process(url: str):
-    temp_filename = unique_temp_path(".mp4")
     try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "yt_dlp",
-                "-f",
-                "bestvideo[height<=1080][vcodec^=avc][ext=mp4]+bestaudio[acodec=aac]/bestvideo[vcodec^=hev][ext=mp4]+bestaudio[acodec=aac]/bestvideo+bestaudio",
-                "--merge-output-format",
-                "mp4",
-                "--write-subs",
-                "--sub-langs",
-                "zh.*",
-                "--sub-format",
-                "srt",
-                "--print",
-                "title",
-                "--no-simulate",
-                "-o",
-                temp_filename,
-                url,
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
+        video_id, has_subtitles = await asyncio.to_thread(process_video_download, url)
+    except Exception as error:
+        # The HTTP response has already been sent; failures must stay in this job.
+        logger.exception(
+            "Video download or processing failed: %s",
+            getattr(error, "stderr", None) or error,
         )
-        original_title = result.stdout.strip().splitlines()[0] + ".mp4"
-    except subprocess.CalledProcessError as error:
-        logger.error(f"Failed to download video: {error.stderr}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to download video: {error.stderr}"
-        )
-    best_subitle_path = pick_best_subtitle(temp_filename)
+        return
+
+    if has_subtitles and settings.dictionary_generation.enabled:
+        asyncio.create_task(process_subtitles_background(video_id))
+
+
+def process_video_download(url: str) -> tuple[str, bool]:
+    # Keep all downloader sidecars and partial files together for cleanup,
+    # including when extraction, conversion, or subtitle processing fails.
+    with tempfile.TemporaryDirectory(
+        prefix="download-", dir=unique_temp_path("").parent
+    ) as directory:
+        return download_into_directory(url, Path(directory) / "video.mp4")
+
+
+def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "yt_dlp",
+            "-f",
+            "bestvideo[height<=1080][vcodec^=avc][ext=mp4]+bestaudio[acodec=aac]/bestvideo[vcodec^=hev][ext=mp4]+bestaudio[acodec=aac]/bestvideo+bestaudio",
+            "--merge-output-format",
+            "mp4",
+            "--write-subs",
+            "--sub-langs",
+            "zh.*",
+            "--sub-format",
+            "srt",
+            "--print",
+            "title",
+            "--no-simulate",
+            "-o",
+            temp_filename,
+            url,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    titles = result.stdout.strip().splitlines()
+    if not titles or not temp_filename.is_file():
+        raise ValueError("The site did not provide a downloadable video")
+    original_title = titles[0] + ".mp4"
+    best_subtitle_path = pick_best_subtitle(temp_filename)
     _, output_dir = generate_video(temp_filename, original_title)
-    if best_subitle_path is not None:
+    if best_subtitle_path is not None:
         video_id = output_dir.name
         subtitles_path = get_video_path(video_id, "subtitles.srt")
         metadata_path = get_video_path(video_id, "video.pkl")
-        shutil.move(best_subitle_path, subtitles_path)
+        shutil.move(best_subtitle_path, subtitles_path)
 
         with open(subtitles_path) as f:
             subtitles = f.read()
@@ -489,10 +510,8 @@ async def download_and_process(url: str):
         video_pickle.character_count = character_count
         with open(metadata_path, "wb") as v:
             pickle.dump(video_pickle, v)
-        load_video_cached.cache_clear()
-
-        if settings.dictionary_generation.enabled:
-            asyncio.create_task(process_subtitles_background(video_id))
+    load_video_cached.cache_clear()
+    return output_dir.name, best_subtitle_path is not None
 
 
 class DownloadRequest(BaseModel):
