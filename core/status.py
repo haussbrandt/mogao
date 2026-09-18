@@ -400,7 +400,10 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
         job["status"] == "processing" for job in dictionaries
     )
     video_problem = any(job["status"] == "failed" for job in video_jobs)
-    video_active = any(job["status"] == "processing" for job in video_jobs)
+    video_active = any(
+        job["status"] in {"queued", "downloading", "processing"}
+        for job in video_jobs
+    )
     postprocessing_problem = (
         postprocessing["state"] == "unavailable"
         or postprocessing["failed_card_count"] > 0

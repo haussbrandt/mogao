@@ -309,6 +309,20 @@ select:focus {
   white-space: nowrap;
 }
 
+.yt-btn:disabled {
+  cursor: wait;
+}
+
+.yt-btn.download-started,
+.yt-btn.download-started:hover {
+  background: var(--accent-add);
+}
+
+.yt-btn.download-failed,
+.yt-btn.download-failed:hover {
+  background: var(--accent-danger);
+}
+
 .library-switcher {
   position: relative;
   flex: 0 0 auto;

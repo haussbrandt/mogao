@@ -1,5 +1,6 @@
 import asyncio
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -9,8 +10,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import urllib.parse
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -44,7 +48,18 @@ CHUNK_UPLOAD_PATH = "video_uploads"
 CHUNK_SIZE = 50 * 1024 * 1024
 PROCESSING_JOB_RETENTION_SECONDS = 60 * 60
 DOWNLOAD_TIMEOUT_SECONDS = 60 * 60
+DOWNLOAD_INFO_TIMEOUT_SECONDS = 60
+SUBTITLE_DOWNLOAD_TIMEOUT_SECONDS = 5 * 60
+ACTIVE_VIDEO_JOB_STATUSES = {"queued", "downloading", "processing"}
 processing_jobs: dict[UUID, dict] = {}
+processing_jobs_lock = threading.RLock()
+
+
+@dataclass(frozen=True)
+class DownloadMetadata:
+    title: str
+    source_identity: tuple[str, str]
+    resolved_url: str
 
 
 def format_video_duration(duration: float) -> str:
@@ -83,14 +98,15 @@ def load_chunk_upload(upload_id: UUID) -> tuple[str, dict]:
 
 def prune_processing_jobs():
     cutoff = time.time() - PROCESSING_JOB_RETENTION_SECONDS
-    expired = [
-        upload_id
-        for upload_id, job in processing_jobs.items()
-        if job["status"] in ("complete", "failed")
-        and job.get("finished_at", 0) < cutoff
-    ]
-    for upload_id in expired:
-        processing_jobs.pop(upload_id, None)
+    with processing_jobs_lock:
+        expired = [
+            upload_id
+            for upload_id, job in processing_jobs.items()
+            if job["status"] in ("complete", "failed")
+            and job.get("finished_at", 0) < cutoff
+        ]
+        for upload_id in expired:
+            processing_jobs.pop(upload_id, None)
 
 
 async def cleanup_processing_jobs():
@@ -104,7 +120,66 @@ def write_processing_status(upload_id: UUID, status: str, **details):
     job = {"status": status, **details}
     if status in ("complete", "failed"):
         job["finished_at"] = time.time()
-    processing_jobs[upload_id] = job
+    with processing_jobs_lock:
+        processing_jobs[upload_id] = job
+
+
+def snapshot_processing_jobs() -> dict[UUID, dict]:
+    prune_processing_jobs()
+    with processing_jobs_lock:
+        return {
+            processing_id: job.copy()
+            for processing_id, job in processing_jobs.items()
+        }
+
+
+def _find_video_by_source_identity(
+    source_identity: tuple[str, str],
+) -> tuple[str, Video] | None:
+    if not settings.paths.video_library.is_dir():
+        return None
+
+    for item in settings.paths.video_library.iterdir():
+        if not item.is_dir():
+            continue
+        try:
+            UUID(item.name)
+        except ValueError:
+            continue
+        video = load_video_cached(item.name)
+        if video and getattr(video, "source_identity", None) == source_identity:
+            return item.name, video
+    return None
+
+
+def register_download_job(
+    processing_id: UUID, metadata: DownloadMetadata
+) -> tuple[str, str] | None:
+    """Reserve a source identity, returning conflict kind and title if taken."""
+    prune_processing_jobs()
+    with processing_jobs_lock:
+        failed_attempts = []
+        for job_id, job in processing_jobs.items():
+            if job.get("source_identity") != metadata.source_identity:
+                continue
+            if job.get("status") in ACTIVE_VIDEO_JOB_STATUSES:
+                return "active", str(job.get("title") or metadata.title)
+            if job.get("status") == "failed":
+                failed_attempts.append(job_id)
+
+        existing = _find_video_by_source_identity(metadata.source_identity)
+        if existing is not None:
+            _, video = existing
+            return "library", video.metadata.title
+
+        for job_id in failed_attempts:
+            processing_jobs.pop(job_id, None)
+        processing_jobs[processing_id] = {
+            "status": "queued",
+            "title": metadata.title,
+            "source_identity": metadata.source_identity,
+        }
+    return None
 
 
 def process_chunked_video(path: str, original_filename: str, upload_id: UUID):
@@ -343,12 +418,14 @@ async def complete_chunk_upload(upload_id: UUID, background_tasks: BackgroundTas
 @router.get("/upload-chunks/{upload_id}/status")
 async def chunk_upload_status(upload_id: UUID):
     prune_processing_jobs()
-    status = processing_jobs.get(upload_id)
-    if status is None:
-        raise HTTPException(status_code=404, detail="Processing job not found")
-    if status["status"] in ("complete", "failed"):
-        processing_jobs.pop(upload_id, None)
-    return status
+    with processing_jobs_lock:
+        status = processing_jobs.get(upload_id)
+        if status is None:
+            raise HTTPException(status_code=404, detail="Processing job not found")
+        result = status.copy()
+        if status["status"] in ("complete", "failed"):
+            processing_jobs.pop(upload_id, None)
+    return result
 
 
 @router.delete("/upload-chunks/{upload_id}")
@@ -440,12 +517,196 @@ def pick_best_subtitle(temp_filename: str | os.PathLike[str]) -> str | None:
     return None
 
 
-async def download_and_process(url: str):
+def _source_identity(info: dict, url: str) -> tuple[str, str]:
+    extractor = str(info.get("extractor_key") or info.get("extractor") or "").strip()
+    source_id = str(info.get("id") or "").strip()
+    if not extractor or not source_id:
+        raise ValueError("The site did not provide a video identity")
+
+    extractor = extractor.casefold()
+    if extractor == "generic":
+        source_url = str(
+            info.get("webpage_url") or info.get("original_url") or url
+        ).strip()
+        if not source_url:
+            raise ValueError("The generic extractor did not provide a source URL")
+        source_url, _ = urllib.parse.urldefrag(source_url)
+        source_id = "url:" + hashlib.sha256(source_url.encode()).hexdigest()
+
+    return extractor, source_id
+
+
+def _remove_downloaded_subtitles(temp_filename: Path) -> None:
+    base = os.path.splitext(temp_filename)[0]
+    for path in glob.glob(f"{base}.*.srt*"):
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            logger.warning("Could not remove temporary subtitle file %s", path)
+
+
+def download_subtitles(url: str, temp_filename: Path) -> None:
+    run_media_command(
+        [
+            sys.executable,
+            "-m",
+            "yt_dlp",
+            "--no-playlist",
+            "--playlist-items",
+            "1",
+            "--socket-timeout",
+            "30",
+            "--retries",
+            "3",
+            "--fragment-retries",
+            "3",
+            "--extractor-retries",
+            "3",
+            "--skip-download",
+            "--write-subs",
+            "--sub-langs",
+            "zh.*",
+            "--sub-format",
+            "srt",
+            "-o",
+            temp_filename,
+            "--",
+            url,
+        ],
+        timeout=SUBTITLE_DOWNLOAD_TIMEOUT_SECONDS,
+    )
+
+
+def install_downloaded_subtitles(output_dir: Path, subtitle_path: Path) -> None:
+    subtitles_path = output_dir / "subtitles.srt"
+    metadata_path = output_dir / "video.pkl"
+    staged_subtitles = output_dir / f".subtitles-{uuid.uuid4()}.srt"
+    staged_metadata = output_dir / f".video-{uuid.uuid4()}.pkl"
+
     try:
-        video_id, has_subtitles = await asyncio.to_thread(process_video_download, url)
+        with subtitle_path.open(encoding="utf-8") as subtitle_file:
+            subtitles = subtitle_file.read()
+        character_count = sum(1 for c in subtitles if "\u4e00" <= c <= "\u9fff")
+
+        with metadata_path.open("rb") as metadata_file:
+            video: Video = pickle.load(metadata_file)
+        video.character_count = character_count
+
+        shutil.move(subtitle_path, staged_subtitles)
+        with staged_metadata.open("wb") as metadata_file:
+            pickle.dump(video, metadata_file)
+
+        os.replace(staged_subtitles, subtitles_path)
+        try:
+            os.replace(staged_metadata, metadata_path)
+        except Exception:
+            subtitles_path.unlink(missing_ok=True)
+            raise
+    finally:
+        staged_subtitles.unlink(missing_ok=True)
+        staged_metadata.unlink(missing_ok=True)
+
+
+def _extract_download_info(url: str) -> dict:
+    result = run_media_command(
+        [
+            sys.executable,
+            "-m",
+            "yt_dlp",
+            "--no-playlist",
+            "--playlist-items",
+            "1",
+            "--socket-timeout",
+            "30",
+            "--retries",
+            "3",
+            "--extractor-retries",
+            "3",
+            "--dump-single-json",
+            "--skip-download",
+            "--",
+            url,
+        ],
+        timeout=DOWNLOAD_INFO_TIMEOUT_SECONDS,
+    )
+    try:
+        info = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError("The site returned invalid video information") from error
+    if not isinstance(info, dict):
+        raise ValueError("The site returned invalid video information")
+    return info
+
+
+def _first_video_info(info: dict) -> dict:
+    for _ in range(20):
+        if "entries" not in info:
+            return info
+        entries = [entry for entry in info.get("entries") or [] if entry]
+        if not entries:
+            raise ValueError("The site did not provide any videos")
+        info = entries[0]
+        if not isinstance(info, dict):
+            raise ValueError("The site returned invalid video information")
+    raise ValueError("The site returned too many nested playlists")
+
+
+def extract_download_metadata(url: str) -> DownloadMetadata:
+    info = _extract_download_info(url)
+    followed_urls = set()
+    for _ in range(20):
+        info = _first_video_info(info)
+        if info.get("_type") not in {"url", "url_transparent"} or info.get(
+            "formats"
+        ):
+            break
+        next_url = str(info.get("url") or "").strip()
+        if not next_url or next_url in followed_urls:
+            raise ValueError("The site did not resolve a video URL")
+        followed_urls.add(next_url)
+        info = _extract_download_info(next_url)
+    else:
+        raise ValueError("The site returned too many nested video references")
+
+    title = str(info.get("title") or "").strip()
+    if not title:
+        raise ValueError("The site did not provide a video title")
+    resolved_url = str(
+        info.get("webpage_url") or info.get("original_url") or info.get("url") or ""
+    ).strip()
+    if not resolved_url:
+        raise ValueError("The site did not provide a resolved video URL")
+
+    return DownloadMetadata(
+        title=title,
+        source_identity=_source_identity(info, resolved_url),
+        resolved_url=resolved_url,
+    )
+
+
+async def download_and_process(processing_id: UUID, metadata: DownloadMetadata):
+    write_processing_status(
+        processing_id,
+        "downloading",
+        title=metadata.title,
+        source_identity=metadata.source_identity,
+    )
+    try:
+        video_id, has_subtitles = await asyncio.to_thread(
+            process_video_download, processing_id, metadata
+        )
     except subprocess.TimeoutExpired as error:
         logger.error(
             "Video download or processing timed out after %s seconds", error.timeout
+        )
+        write_processing_status(
+            processing_id,
+            "failed",
+            title=metadata.title,
+            source_identity=metadata.source_identity,
+            detail=f"Download or processing timed out after {error.timeout} seconds.",
         )
         return
     except Exception as error:
@@ -454,23 +715,46 @@ async def download_and_process(url: str):
             "Video download or processing failed: %s",
             getattr(error, "stderr", None) or error,
         )
+        write_processing_status(
+            processing_id,
+            "failed",
+            title=metadata.title,
+            source_identity=metadata.source_identity,
+            detail="Download or processing failed. See Recent issues for details.",
+        )
         return
+
+    write_processing_status(
+        processing_id,
+        "complete",
+        title=metadata.title,
+        source_identity=metadata.source_identity,
+        video_id=video_id,
+    )
 
     if has_subtitles and settings.dictionary_generation.enabled:
         asyncio.create_task(process_subtitles_background(video_id))
 
 
-def process_video_download(url: str) -> tuple[str, bool]:
+def process_video_download(
+    processing_id: UUID, metadata: DownloadMetadata
+) -> tuple[str, bool]:
     # Keep all downloader sidecars and partial files together for cleanup,
     # including when extraction, conversion, or subtitle processing fails.
     with tempfile.TemporaryDirectory(
         prefix="download-", dir=unique_temp_path("").parent
     ) as directory:
-        return download_into_directory(url, Path(directory) / "video.mp4")
+        return download_into_directory(
+            Path(directory) / "video.mp4", processing_id, metadata
+        )
 
 
-def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
-    result = run_media_command(
+def download_into_directory(
+    temp_filename: Path,
+    processing_id: UUID,
+    metadata: DownloadMetadata,
+) -> tuple[str, bool]:
+    run_media_command(
         [
             sys.executable,
             "-m",
@@ -490,44 +774,62 @@ def download_into_directory(url: str, temp_filename: Path) -> tuple[str, bool]:
             "bestvideo[height<=1080][vcodec^=avc][ext=mp4]+bestaudio[acodec=aac]/bestvideo[vcodec^=hev][ext=mp4]+bestaudio[acodec=aac]/bestvideo+bestaudio",
             "--merge-output-format",
             "mp4",
-            "--write-subs",
-            "--sub-langs",
-            "zh.*",
-            "--sub-format",
-            "srt",
-            "--print",
-            "title",
             "--no-simulate",
             "-o",
             temp_filename,
             "--",
-            url,
+            metadata.resolved_url,
         ],
         timeout=DOWNLOAD_TIMEOUT_SECONDS,
     )
-    titles = result.stdout.strip().splitlines()
-    if not titles or not temp_filename.is_file():
+    if not temp_filename.is_file():
         raise ValueError("The site did not provide a downloadable video")
-    original_title = titles[0] + ".mp4"
-    best_subtitle_path = pick_best_subtitle(temp_filename)
-    _, output_dir = generate_video(temp_filename, original_title)
+
+    subtitle_filename = temp_filename.with_name("subtitles.mp4")
+    best_subtitle_path = None
+    try:
+        download_subtitles(metadata.resolved_url, subtitle_filename)
+        selected_subtitle = pick_best_subtitle(subtitle_filename)
+        if selected_subtitle is not None:
+            best_subtitle_path = Path(selected_subtitle)
+    except Exception:
+        logger.warning(
+            "Video download will continue without subtitles because subtitle "
+            "retrieval failed for %s",
+            metadata.title,
+            exc_info=True,
+        )
+        _remove_downloaded_subtitles(subtitle_filename)
+
+    write_processing_status(
+        processing_id,
+        "processing",
+        title=metadata.title,
+        source_identity=metadata.source_identity,
+    )
+    original_title = metadata.title + ".mp4"
+    _, output_dir = generate_video(
+        temp_filename,
+        original_title,
+        source_identity=metadata.source_identity,
+    )
+    has_subtitles = False
     if best_subtitle_path is not None:
-        video_id = output_dir.name
-        subtitles_path = get_video_path(video_id, "subtitles.srt")
-        metadata_path = get_video_path(video_id, "video.pkl")
-        shutil.move(best_subtitle_path, subtitles_path)
-
-        with open(subtitles_path) as f:
-            subtitles = f.read()
-            character_count = sum(1 for c in subtitles if "\u4e00" <= c <= "\u9fff")
-
-        with open(metadata_path, "rb") as v:
-            video_pickle: Video = pickle.load(v)
-        video_pickle.character_count = character_count
-        with open(metadata_path, "wb") as v:
-            pickle.dump(video_pickle, v)
+        try:
+            install_downloaded_subtitles(output_dir, best_subtitle_path)
+        except Exception:
+            logger.warning(
+                "Video was imported without subtitles because subtitle installation "
+                "failed for %s",
+                metadata.title,
+                exc_info=True,
+            )
+            (output_dir / "subtitles.srt").unlink(missing_ok=True)
+            _remove_downloaded_subtitles(subtitle_filename)
+        else:
+            has_subtitles = True
     load_video_cached.cache_clear()
-    return output_dir.name, best_subtitle_path is not None
+    return output_dir.name, has_subtitles
 
 
 class DownloadRequest(BaseModel):
@@ -536,8 +838,41 @@ class DownloadRequest(BaseModel):
 
 @router.post("/download-video")
 async def download_video(request: DownloadRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(download_and_process, str(request.url))
-    return {"status": "queued"}
+    url = str(request.url)
+    try:
+        metadata = await asyncio.to_thread(extract_download_metadata, url)
+    except subprocess.TimeoutExpired as error:
+        logger.error(
+            "Video information lookup timed out after %s seconds", error.timeout
+        )
+        raise HTTPException(
+            status_code=504, detail="Video information lookup timed out."
+        )
+    except Exception as error:
+        logger.error(
+            "Video information lookup failed: %s",
+            getattr(error, "stderr", None) or error,
+        )
+        raise HTTPException(
+            status_code=422, detail="Could not retrieve video information."
+        )
+
+    processing_id = uuid.uuid4()
+    conflict = register_download_job(processing_id, metadata)
+    if conflict is not None:
+        conflict_kind, conflict_title = conflict
+        if conflict_kind == "active":
+            detail = f'"{conflict_title}" is already being downloaded.'
+        else:
+            detail = f'"{conflict_title}" is already in the video library.'
+        raise HTTPException(status_code=409, detail=detail)
+
+    background_tasks.add_task(download_and_process, processing_id, metadata)
+    return {
+        "status": "queued",
+        "processing_id": str(processing_id),
+        "title": metadata.title,
+    }
 
 
 @router.get("/{video_id}/cover.jpg")

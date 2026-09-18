@@ -355,10 +355,17 @@
   text-transform: uppercase;
 }
 
-.status-badge-processing {
+.status-badge-processing,
+.status-badge-downloading {
   border-color: var(--accent-interactive);
   background: var(--status-blue-soft);
   color: var(--accent-interactive);
+}
+
+.status-badge-queued {
+  border-color: var(--accent-highlight);
+  background: var(--status-yellow-soft);
+  color: var(--status-warning-text);
 }
 
 .status-badge-error,

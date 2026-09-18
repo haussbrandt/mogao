@@ -308,7 +308,7 @@ async def status_view(request: Request):
         {
             "request": request,
             "status": await asyncio.to_thread(
-                build_status, postprocessor, video_router.processing_jobs.copy()
+                build_status, postprocessor, video_router.snapshot_processing_jobs()
             ),
             "video_enabled": settings.video.enabled,
         },
@@ -323,7 +323,7 @@ async def status_content(request: Request):
         {
             "request": request,
             "status": await asyncio.to_thread(
-                build_status, postprocessor, video_router.processing_jobs.copy()
+                build_status, postprocessor, video_router.snapshot_processing_jobs()
             ),
         },
     )

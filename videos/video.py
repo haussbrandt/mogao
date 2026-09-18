@@ -99,6 +99,7 @@ class Video:
     processed_at: str
     character_count: int = 0
     cover_image: str | None = None
+    source_identity: tuple[str, str] | None = None
 
 
 def run_media_command(
@@ -180,7 +181,10 @@ def probe_audio_codec(path: str | os.PathLike[str]) -> str:
 
 
 def generate_video(
-    path: str | os.PathLike[str], original_filename: str
+    path: str | os.PathLike[str],
+    original_filename: str,
+    *,
+    source_identity: tuple[str, str] | None = None,
 ) -> tuple[Video, Path]:
     cmd = [
         "ffprobe",
@@ -276,6 +280,7 @@ def generate_video(
             metadata=metadata,
             processed_at=datetime.now().isoformat(),
             cover_image=f"cover.jpg",
+            source_identity=source_identity,
         )
 
         with open(metadata_output_path, "wb") as f:

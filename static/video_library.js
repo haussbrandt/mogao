@@ -134,14 +134,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  document.getElementById("yt-submit").addEventListener("click", async () => {
-    const url = document.getElementById("yt-link").value.trim();
+  const downloadInput = document.getElementById("yt-link");
+  const downloadButton = document.getElementById("yt-submit");
+  downloadButton.addEventListener("click", async () => {
+    const url = downloadInput.value.trim();
     if (!url) return;
-    await fetch(`${videoBasePath}/download-video`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
+
+    downloadButton.disabled = true;
+    downloadButton.textContent = "Checking...";
+
+    try {
+      const response = await fetch(`${videoBasePath}/download-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      await responseJson(response);
+      downloadInput.value = "";
+      downloadButton.textContent = "Started";
+      downloadButton.classList.add("download-started");
+    } catch (error) {
+      console.error("Could not download video", error);
+      downloadButton.textContent = "Failed";
+      downloadButton.classList.add("download-failed");
+    } finally {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      downloadButton.textContent = "Download";
+      downloadButton.classList.remove("download-started", "download-failed");
+      downloadButton.disabled = false;
+    }
   });
 
   cards.forEach((card) => {
