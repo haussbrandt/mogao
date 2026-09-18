@@ -39,27 +39,37 @@
     />
   </head>
   <body>
-    {% if not has_subtitles %}
-    <div id="sub-upload-bar">
-      <label id="sub-upload-btn">
-        Upload subtitles (.srt)
-        <input type="file" id="sub-input" accept=".srt" hidden />
-      </label>
-      <span id="sub-upload-status"></span>
-    </div>
-    {% endif %}
-    <div id="player-layout">
-      <div id="player-container">
+    <div id="player-toolbar">
+      <a
+        id="video-library-back"
+        class="subtitle-action"
+        href="{{ url_for('video_library_view') }}"
+      >
+        <span aria-hidden="true">←</span>
+        Library
+      </a>
+      <div id="subtitle-controls">
         {% if has_subtitles %}
         <button
           id="subtitle-mode-toggle"
+          class="subtitle-action"
           type="button"
           aria-pressed="false"
           aria-controls="transcript-panel"
         >
           Transcript
         </button>
+        {% else %}
+        <span id="sub-upload-status"></span>
+        <label id="sub-upload-btn" class="subtitle-action">
+          Upload subtitles (.srt)
+          <input type="file" id="sub-input" accept=".srt" hidden />
+        </label>
         {% endif %}
+      </div>
+    </div>
+    <div id="player-layout">
+      <div id="player-container">
         <video
           id="video"
           controls
@@ -100,7 +110,7 @@
 
   <script src="{{ url_for('static', path='textprocessor.js') }}?v=3"></script>
   {% if anki_enabled %}
-    <script src="{{ url_for('static', path='anki.js') }}?v=5"></script>
+  <script src="{{ url_for('static', path='anki.js') }}?v=5"></script>
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=4"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
