@@ -129,9 +129,26 @@ uv run python -m scripts.build_dictionary \
 `--frequency` accepts a Yomitan term-metadata JSON file, directory or ZIP and
 may be supplied more than once.
 
-## HTTPS reverse proxy
+## Deployment
 
-When exposing Mogao outside a trusted local network, place it behind an HTTPS reverse proxy.
+Mogao runs on the computer where you start `uv run server.py`. This can be your
+everyday PC, a Raspberry Pi, or a remote server. Keep that computer running
+whenever you want to use Mogao.
+
+- **On the same computer:** Open `http://localhost:8123`.
+- **On your local network:** Mogao listens on port `8123`, so other devices on
+  the same network can open `http://<host-ip>:8123`.
+- **Away from home, privately:** One option is [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve),
+  which can give Mogao an HTTPS address accessible to devices in your tailnet
+  without making it public. This requires Tailscale on the computer running
+  Mogao and on the devices you use to access it. The computer running Mogao
+  must stay online.
+- **On a remote server:** Put Mogao behind an HTTPS reverse proxy such as Caddy,
+  forwarding requests to port `8123`. Configure access to the server and its
+  firewall for your deployment.
+
+If you enable Anki features, the computer running Mogao must be able to reach
+the AnkiConnect URL set in `config.toml`.
 
 ## License
 
