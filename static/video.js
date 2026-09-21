@@ -265,6 +265,64 @@ modeToggle?.addEventListener("click", () => {
   setTranscriptMode(transcriptPanel.hidden);
 });
 
+const subtitleMenu = document.getElementById("subtitle-menu-container");
+const replaceSubtitles = document.getElementById("replace-subtitles");
+const removeSubtitles = document.getElementById("remove-subtitles");
+const subInput = document.getElementById("sub-input");
+
+function setSubtitleActionsDisabled(disabled) {
+  for (const control of [subInput, replaceSubtitles, removeSubtitles]) {
+    if (control) control.disabled = disabled;
+  }
+}
+
+async function submitSubtitleChange(action, body) {
+  const response = await fetch(
+    `${window.MOGAO_CONFIG.videoBasePath}/${action}-subtitles/${window.MOGAO_CONFIG.videoId}`,
+    { method: "POST", body },
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(
+      typeof data?.detail === "string"
+        ? data.detail
+        : `Server error: ${response.status}`,
+    );
+  }
+}
+
+document.addEventListener("click", (event) => {
+  if (subtitleMenu && !subtitleMenu.contains(event.target)) {
+    subtitleMenu.open = false;
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && subtitleMenu?.open) {
+    subtitleMenu.open = false;
+    document.getElementById("subtitle-menu-toggle").focus();
+  }
+});
+
+replaceSubtitles?.addEventListener("click", () => {
+  subtitleMenu.open = false;
+  subInput.click();
+});
+
+removeSubtitles?.addEventListener("click", async () => {
+  subtitleMenu.open = false;
+  if (!confirm("Remove the subtitles from this video?")) return;
+  setSubtitleActionsDisabled(true);
+  try {
+    await submitSubtitleChange("remove");
+    location.reload();
+  } catch (error) {
+    setSubtitleActionsDisabled(false);
+    alert(`Could not remove subtitles: ${error.message}`);
+    console.error(error);
+  }
+});
+
 transcriptLines?.addEventListener("click", (e) => {
   const time = e.target.closest(".transcript-time");
   if (!time) return;
@@ -366,32 +424,35 @@ document.addEventListener("click", (e) => {
   }
 });
 
-const subInput = document.getElementById("sub-input");
 if (subInput) {
   subInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setSubtitleActionsDisabled(true);
 
     const status = document.getElementById("sub-upload-status");
-    status.textContent = "Uploading…";
+    if (status) status.textContent = "Uploading…";
+    if (replaceSubtitles) {
+      replaceSubtitles.textContent = "Uploading…";
+    }
 
     const form = new FormData();
     form.append("file", file);
 
     try {
-      const res = await fetch(
-        `${window.MOGAO_CONFIG.videoBasePath}/upload-subtitles/${window.MOGAO_CONFIG.videoId}`,
-        {
-          method: "POST",
-          body: form,
-        },
-      );
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-      status.textContent = "Done! Reloading…";
+      await submitSubtitleChange("upload", form);
+      if (status) status.textContent = "Done! Reloading…";
       location.reload();
     } catch (err) {
-      status.textContent = `Upload failed: ${err.message}`;
+      setSubtitleActionsDisabled(false);
+      if (status) status.textContent = `Upload failed: ${err.message}`;
+      if (replaceSubtitles) {
+        replaceSubtitles.textContent = "Replace subtitles";
+        alert(`Could not replace subtitles: ${err.message}`);
+      }
       console.error(err);
+    } finally {
+      subInput.value = "";
     }
   });
 }

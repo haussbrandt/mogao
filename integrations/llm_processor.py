@@ -27,6 +27,27 @@ MIN_INTERVAL_S = 60.0 / RATE_LIMIT_PER_MIN
 _rate_lock: Optional[asyncio.Lock] = None
 _last_request_at: float = 0.0
 _dictionary_retry_tasks: set[asyncio.Task] = set()
+_video_dictionary_tasks: dict[str, asyncio.Task] = {}
+
+
+def cancel_video_dictionary_job(video_id: str) -> None:
+    task = _video_dictionary_tasks.pop(str(video_id), None)
+    if task is not None:
+        task.cancel()
+
+
+def schedule_video_dictionary_job(video_id: str, *, resume: bool = False) -> None:
+    """Register before the job starts so even a queued job can be cancelled."""
+    item_id = str(video_id)
+    cancel_video_dictionary_job(item_id)
+    task = asyncio.create_task(process_subtitles_background(item_id, resume=resume))
+    _video_dictionary_tasks[item_id] = task
+
+    def forget(completed: asyncio.Task) -> None:
+        if _video_dictionary_tasks.get(item_id) is completed:
+            _video_dictionary_tasks.pop(item_id)
+
+    task.add_done_callback(forget)
 
 
 def _error_summary(error: Exception) -> str:
@@ -489,7 +510,7 @@ def schedule_video_dictionary_retry(video_id: str) -> bool:
         raise FileNotFoundError(subtitles_path)
 
     _mark_dictionary_retry_started(video_id, state, _save_video_dict)
-    _track_dictionary_retry(process_subtitles_background(video_id, resume=True))
+    schedule_video_dictionary_job(video_id, resume=True)
     return True
 
 
@@ -553,7 +574,7 @@ async def resume_interrupted_processing(*, include_videos: bool = True) -> None:
                 pass
             try:
                 logger.info(f"Resuming interrupted dictionary for video {video_id}")
-                asyncio.create_task(process_subtitles_background(video_id, resume=True))
+                schedule_video_dictionary_job(video_id, resume=True)
             except Exception:
                 logger.exception(f"Could not resume dictionary for video {video_id}")
     except FileNotFoundError:

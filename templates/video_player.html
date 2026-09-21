@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=13"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=3" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -59,6 +59,24 @@
         >
           Transcript
         </button>
+        <details id="subtitle-menu-container">
+          <summary
+            id="subtitle-menu-toggle"
+            class="subtitle-action"
+            aria-label="Subtitle options"
+          >
+            ⋮
+          </summary>
+          <div id="subtitle-menu">
+            <button id="replace-subtitles" type="button">
+              Replace subtitles
+            </button>
+            <button id="remove-subtitles" type="button">
+              Remove subtitles
+            </button>
+          </div>
+          <input type="file" id="sub-input" accept=".srt" hidden />
+        </details>
         {% else %}
         <span id="sub-upload-status"></span>
         <label id="sub-upload-btn" class="subtitle-action">
@@ -114,5 +132,5 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=4"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=2"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=5"></script>
 </html>

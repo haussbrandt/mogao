@@ -38,6 +38,66 @@ body {
   gap: 12px;
 }
 
+#subtitle-mode-toggle {
+  width: 112px;
+  justify-content: center;
+}
+
+#subtitle-menu-container {
+  position: relative;
+  flex: none;
+}
+
+#subtitle-menu-toggle {
+  width: 36px;
+  height: 36px;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  list-style: none;
+}
+
+#subtitle-menu-toggle::-webkit-details-marker {
+  display: none;
+}
+
+#subtitle-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  background: #202020;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+#subtitle-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font: 0.85rem system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+#subtitle-menu button:hover:not(:disabled),
+#subtitle-menu button:focus-visible {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+#subtitle-menu button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 #player-container {
   position: relative;
   flex: 1;
@@ -240,6 +300,10 @@ body {
   .subtitle-action {
     padding: 6px 8px;
     font-size: 0.75rem;
+  }
+
+  #subtitle-mode-toggle {
+    width: 96px;
   }
 
   #video-library-back,

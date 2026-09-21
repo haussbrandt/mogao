@@ -16,6 +16,7 @@ import urllib.parse
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
@@ -24,9 +25,18 @@ from pydantic import AnyHttpUrl, BaseModel
 
 from core.config import settings
 from core.dependencies import postprocessor, templates
-from core.paths import get_video_path, get_video_progress_path, unique_temp_path
+from core.paths import (
+    get_video_dict_path,
+    get_video_path,
+    get_video_progress_path,
+    unique_temp_path,
+)
 from integrations.anki import call_anki_async, get_anki_word_sets
-from integrations.llm_processor import load_video_dict, process_subtitles_background
+from integrations.llm_processor import (
+    cancel_video_dictionary_job,
+    load_video_dict,
+    schedule_video_dictionary_job,
+)
 from videos.video import Video, cut_audio, generate_video, run_media_command, take_screenshot
 from videos.video_library import (
     load_video_cached,
@@ -436,54 +446,115 @@ async def cancel_chunk_upload(upload_id: UUID):
     return {"status": "cancelled"}
 
 
+def _stage_subtitles(source: BinaryIO, destination: Path) -> int:
+    """Copy and validate an upload in a worker, without touching live files."""
+    with destination.open("wb") as buffer:
+        shutil.copyfileobj(source, buffer)
+    try:
+        subtitles = destination.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Subtitles must be UTF-8 encoded")
+    return sum(1 for c in subtitles if "\u4e00" <= c <= "\u9fff")
+
+
+async def _change_subtitles(video_id: UUID, source: BinaryIO | None = None) -> None:
+    """Prepare uploads off-loop, then commit without yielding to dictionary jobs."""
+    output_dir = get_video_path(video_id)
+    subtitles_path = get_video_path(video_id, "subtitles.srt")
+    metadata_path = get_video_path(video_id, "video.pkl")
+    if not metadata_path.is_file():
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    staging_dir = Path(tempfile.mkdtemp(prefix=".subtitles-", dir=output_dir))
+    cleanup = True
+    try:
+        staged_subtitles = staging_dir / "new.srt"
+        character_count = 0
+        if source is not None:
+            character_count = await asyncio.to_thread(
+                _stage_subtitles, source, staged_subtitles
+            )
+
+        # Re-read after staging: the video may have changed or been deleted.
+        # Do not await between here and cancellation; checkpoints use this loop.
+        with metadata_path.open("rb") as metadata_file:
+            video: Video = pickle.load(metadata_file)
+        video.character_count = character_count
+        staged_metadata = staging_dir / "new.pkl"
+        with staged_metadata.open("wb") as metadata_file:
+            pickle.dump(video, metadata_file)
+
+        backups = []
+        try:
+            # Successful cleanup also discards the old subtitle dictionary.
+            for original in (subtitles_path, get_video_dict_path(video_id)):
+                backup = None
+                if original.exists():
+                    backup = staging_dir / original.name
+                    os.replace(original, backup)
+                backups.append((original, backup))
+            if source is not None:
+                os.replace(staged_subtitles, subtitles_path)
+            # Commit metadata last so a failed update leaves it intact.
+            os.replace(staged_metadata, metadata_path)
+        except Exception:
+            try:
+                for original, backup in reversed(backups):
+                    if backup is None:
+                        original.unlink(missing_ok=True)
+                    else:
+                        os.replace(backup, original)
+            except Exception:
+                # These backups may be the only remaining originals.
+                cleanup = False
+                logger.exception(f"Subtitle rollback failed; backups in {staging_dir}")
+            raise
+
+        cancel_video_dictionary_job(str(video_id))
+        load_video_cached.cache_clear()
+    except FileNotFoundError:
+        if not metadata_path.is_file():
+            raise HTTPException(status_code=404, detail="Video not found")
+        raise
+    finally:
+        if cleanup:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
+
 @router.post("/upload-subtitles/{video_id}")
 async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
-    """
-    Handles subtitles upload and processing.
-    """
-
+    """Replace subtitles and restart their dictionary generation."""
     extension = os.path.splitext(file.filename or "")[1].lower()
     if extension not in ALLOWED_SUBTITLE_EXTENSIONS:
         raise HTTPException(
             status_code=400,
             detail=f"Only subtitle files are allowed: {ALLOWED_SUBTITLE_EXTENSIONS}",
         )
-    temp_filename = unique_temp_path(extension)
-    video_id_string = str(video_id)
-    output_dir = get_video_path(video_id)
-    subtitles_path = get_video_path(video_id, "subtitles.srt")
-    metadata_path = get_video_path(video_id, "video.pkl")
-    if not os.path.exists(output_dir):
-        logger.warning(
-            f"Cannot upload subtitles: video {video_id_string} was not found"
-        )
-        raise HTTPException(status_code=404, detail="Video not found")
     try:
-        with open(temp_filename, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        shutil.move(temp_filename, subtitles_path)
+        await _change_subtitles(video_id, file.file)
+    except HTTPException:
+        raise
     except Exception:
-        logger.exception(f"Error processing subtitles for video {video_id_string}")
+        logger.exception(f"Error processing subtitles for video {video_id}")
         raise HTTPException(status_code=500, detail="Failed to process subtitles")
-    finally:
-        if os.path.exists(temp_filename):
-            os.remove(temp_filename)
-    with open(subtitles_path) as f:
-        subtitles = f.read()
-        character_count = sum(1 for c in subtitles if "\u4e00" <= c <= "\u9fff")
-
-    with open(metadata_path, "rb") as v:
-        video_pickle: Video = pickle.load(v)
-    video_pickle.character_count = character_count
-    with open(metadata_path, "wb") as v:
-        pickle.dump(video_pickle, v)
-    load_video_cached.cache_clear()
 
     if settings.dictionary_generation.enabled:
-        asyncio.create_task(process_subtitles_background(video_id_string))
+        schedule_video_dictionary_job(str(video_id))
 
-    return RedirectResponse(url=f"{VIDEO_BASE_PATH}/", status_code=303)
+    return {"status": "ok"}
+
+
+@router.post("/remove-subtitles/{video_id}")
+async def remove_subtitles(video_id: UUID):
+    try:
+        await _change_subtitles(video_id)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(f"Failed to remove subtitles for video {video_id}")
+        raise HTTPException(status_code=500, detail="Failed to remove subtitles")
+
+    return {"status": "ok"}
 
 
 # TODO: refactor, move to correct file etc.
@@ -733,7 +804,7 @@ async def download_and_process(processing_id: UUID, metadata: DownloadMetadata):
     )
 
     if has_subtitles and settings.dictionary_generation.enabled:
-        asyncio.create_task(process_subtitles_background(video_id))
+        schedule_video_dictionary_job(video_id)
 
 
 def process_video_download(
@@ -898,6 +969,8 @@ async def delete_video(video_id: UUID):
 
     if os.path.exists(video_path):
         try:
+            # A partial deletion must not leave the dictionary job running.
+            cancel_video_dictionary_job(video_id_string)
             shutil.rmtree(video_path)
             load_video_cached.cache_clear()
         except Exception:
