@@ -260,35 +260,32 @@ a.toc-link.active {
 .seg-i1,
 .seg-oov {
   text-decoration: none;
-  margin-right: 1px;
 }
 
-/* ── i1-only mode (default) ── */
-[data-seg-mode="i1"] .seg-i1 {
-  text-decoration: underline;
-  text-decoration-color: #64b5f6;
-  text-decoration-style: solid;
-  text-underline-offset: 3px;
+/* Paint underlines 1px short to separate adjacent words without adding layout width. */
+[data-seg-mode="i1"] .seg-i1,
+[data-seg-mode="all"] .seg-known,
+[data-seg-mode="all"] .seg-i1,
+[data-seg-mode="all"] .seg-unknown {
+  background-image: linear-gradient(
+    var(--seg-underline-color),
+    var(--seg-underline-color)
+  );
+  background-position: left bottom;
+  background-repeat: no-repeat;
+  background-size: calc(100% - 1px) 2px;
+  box-decoration-break: clone;
 }
 
-/* ── all mode ── */
-[data-seg-mode="all"] .seg-known {
-  text-decoration: underline;
-  text-decoration-color: #4caf50;
-  text-decoration-style: solid;
-  text-underline-offset: 3px;
-}
+[data-seg-mode="i1"] .seg-i1,
 [data-seg-mode="all"] .seg-i1 {
-  text-decoration: underline;
-  text-decoration-color: #64b5f6;
-  text-decoration-style: solid;
-  text-underline-offset: 3px;
+  --seg-underline-color: #64b5f6;
+}
+[data-seg-mode="all"] .seg-known {
+  --seg-underline-color: #4caf50;
 }
 [data-seg-mode="all"] .seg-unknown {
-  text-decoration: underline;
-  text-decoration-color: #ba68c8;
-  text-decoration-style: solid;
-  text-underline-offset: 3px;
+  --seg-underline-color: #ba68c8;
 }
 [data-seg-mode="all"] .seg-oov {
   background: rgba(255, 90, 50, 0.15);
