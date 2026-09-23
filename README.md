@@ -27,6 +27,8 @@ Mogao is a mobile-first EPUB reader and video player for Chinese learners with i
 - 📚 Custom dictionary generation per book/video for rare and specific words
 - 📱 Designed for use on phones and tablets
 
+Currently, only Simplified Chinese characters are supported. Traditional Chinese character support will be added in the future.
+
 ## Quickstart
 
 Install the [prerequisites](#prerequisites), clone the repository and run the quickstart script:
