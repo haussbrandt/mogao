@@ -135,6 +135,9 @@ Mogao runs on the computer where you start `uv run server.py`. This can be your
 everyday PC, a Raspberry Pi, or a remote server. Keep that computer running
 whenever you want to use Mogao.
 
+To use a different port, run `uv run server.py --port 9000` and use that port in
+the URLs and proxy configuration below.
+
 - **On the same computer:** Open `http://localhost:8123`.
 - **On your local network:** Mogao listens on port `8123`, so other devices on
   the same network can open `http://<host-ip>:8123`.

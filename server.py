@@ -514,6 +514,14 @@ async def serve_image(book_id: UUID, image_name: str):
 
 
 if __name__ == "__main__":
+    import argparse
+
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8123, log_config=None)
+    parser = argparse.ArgumentParser(description="Run the Mogao server")
+    parser.add_argument(
+        "--port", type=int, default=8123, help="Port to listen on (default: 8123)"
+    )
+    args = parser.parse_args()
+
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=None)
