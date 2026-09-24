@@ -134,24 +134,24 @@ may be supplied more than once.
 
 ## Deployment
 
-Mogao runs on the computer where you start `uv run server.py`. This can be your
-everyday PC, a Raspberry Pi, or a remote server. Keep that computer running
-whenever you want to use Mogao.
+You can deploy Mogao on a variety of devices - your PR, a Raspberry Pi or a local server. Start it with `uv run server.py`
 
-To use a different port, run `uv run server.py --port 9000` and use that port in
-the URLs and proxy configuration below.
+Mogao listens on `127.0.0.1:8123` by default, so only the computer running it
+can connect. Keep that computer running whenever you want to use Mogao. Use
+`--port 9000` to change the port.
 
 - **On the same computer:** Open `http://localhost:8123`.
-- **On your local network:** Mogao listens on port `8123`, so other devices on
-  the same network can open `http://<host-ip>:8123`.
-- **Away from home, privately:** One option is [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve),
-  which can give Mogao an HTTPS address accessible to devices in your tailnet
-  without making it public. This requires Tailscale on the computer running
-  Mogao and on the devices you use to access it. The computer running Mogao
-  must stay online.
-- **On a remote server:** Put Mogao behind an HTTPS reverse proxy such as Caddy,
-  forwarding requests to port `8123`. Configure access to the server and its
-  firewall for your deployment.
+- **On a phone or tablet:** Use [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve)
+  or an HTTPS reverse proxy on the computer running Mogao, pointing to
+  `http://127.0.0.1:8123`. Then open its HTTPS address. Tailscale Serve requires
+  Tailscale on both devices.
+- **Directly on a local network:** Run `uv run server.py --host 0.0.0.0`.
+  Other devices can then open `http://<host-ip>:8123`. This connection uses
+  unencrypted HTTP, including for Basic Auth credentials; use HTTPS for
+  regular access.
+- **On a remote server:** Put Mogao behind an HTTPS reverse proxy such as
+  Caddy, forwarding requests to `127.0.0.1:8123`. Configure the server's
+  firewall so port `8123` is not publicly accessible.
 
 If you enable Anki features, the computer running Mogao must be able to reach
 the AnkiConnect URL set in `config.toml`.
