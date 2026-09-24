@@ -39,7 +39,7 @@ cd mogao
 ./quickstart.sh
 ```
 
-The quickstart script will handle some of the required things, but there are still some steps you need to perform manually (like set up the API keys, modify the Anki configuration or disable features you don't want to use). The script will print a list of these steps at the end.
+The quickstart script will handle some of the required things, but there are still some steps you may need to perform manually (like set up the API keys, modify the Anki configuration or disable features you don't want to use). The script will print a list of these steps at the end.
 
 By default, Mogao will create a new note type and deck for you. You can modify config.toml to use a preexisiting one or change the name or field names of the new one.
 
