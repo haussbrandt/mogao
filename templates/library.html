@@ -71,7 +71,7 @@
             <option value="mined" data-field="mined" data-kind="number" data-direction="desc" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
             <option value="mined_rev" data-field="mined" data-kind="number" data-direction="asc" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
           </select>
-          <form action="/upload" method="post" enctype="multipart/form-data">
+          <form action="/upload" method="post" enctype="multipart/form-data" data-mogao-form>
             <label for="epub-upload" class="btn upload-btn">
               + Add Books
             </label>
@@ -82,7 +82,7 @@
               name="files"
               multiple
               accept=".epub"
-              onchange="this.form.submit()"
+              onchange="this.form.requestSubmit()"
             />
           </form>
         </div>
@@ -107,6 +107,7 @@
             action="/delete/{{ book.id }}"
             method="post"
             class="delete-form"
+            data-mogao-form
             onsubmit="
               return confirm('Are you sure you want to delete this book?');
             "
@@ -150,6 +151,6 @@
         {% endfor %}
       </div>
     </div>
-    <script src="{{ url_for('static', path='library_controls.js') }}"></script>
+    <script src="{{ url_for('static', path='library_controls.js') }}?v=2"></script>
   </body>
 </html>

@@ -468,8 +468,6 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     if saved_chapter == chapter_index:
         initial_scroll_percentage = progress.get("scroll_percentage", 0.0)
 
-    save_progress(book_id_string, chapter_index, initial_scroll_percentage)
-
     current_chapter = book.spine[chapter_index]
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None

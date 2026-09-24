@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       try {
         const response = await fetch(
           `${videoBasePath}/upload-chunks/${uploadId}/${chunkIndex}`,
-          { method: "PUT", body: chunk },
+          { method: "PUT", headers: { "X-Mogao-Request": "1" }, body: chunk },
         );
         await responseJson(response);
         return;
@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const uploadFile = async (file, fileIndex, fileCount) => {
     const startResponse = await fetch(`${videoBasePath}/upload-chunks/start`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
       body: JSON.stringify({ filename: file.name, size: file.size }),
     });
     const upload = await responseJson(startResponse);
@@ -81,12 +81,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       uploadStatusText.textContent = `Preparing ${file.name} for processing...`;
       const completeResponse = await fetch(
         `${videoBasePath}/upload-chunks/${upload.upload_id}/complete`,
-        { method: "POST" },
+        { method: "POST", headers: { "X-Mogao-Request": "1" } },
       );
       return await responseJson(completeResponse);
     } catch (error) {
       await fetch(`${videoBasePath}/upload-chunks/${upload.upload_id}`, {
         method: "DELETE",
+        headers: { "X-Mogao-Request": "1" },
       }).catch(() => {});
       throw error;
     }
@@ -146,7 +147,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const response = await fetch(`${videoBasePath}/download-video`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
         body: JSON.stringify({ url }),
       });
       await responseJson(response);
@@ -171,10 +172,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     const deleteForm = card.querySelector(".delete-form");
     deleteForm.addEventListener("click", (event) => event.stopPropagation());
-    deleteForm.addEventListener("submit", (event) => {
-      if (!confirm("Are you sure you want to delete this video?")) {
-        event.preventDefault();
-      }
-    });
   });
 });

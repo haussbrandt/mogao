@@ -131,6 +131,8 @@
             action="{{ video_base_path }}/delete/{{ video.id }}"
             method="post"
             class="delete-form"
+            data-mogao-form
+            onsubmit="return confirm('Are you sure you want to delete this video?')"
           >
             <button type="submit" class="delete-btn">x</button>
           </form>
@@ -160,7 +162,7 @@
         {% endfor %}
       </div>
     </div>
-    <script src="{{ url_for('static', path='library_controls.js') }}"></script>
-    <script src="{{ url_for('static', path='video_library.js') }}"></script>
+    <script src="{{ url_for('static', path='library_controls.js') }}?v=2"></script>
+    <script src="{{ url_for('static', path='video_library.js') }}?v=3"></script>
   </body>
 </html>

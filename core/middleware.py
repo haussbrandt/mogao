@@ -58,10 +58,18 @@ def _token_valid(signed: str) -> bool:
 
 
 PUBLIC_PATHS = {"/static/site.webmanifest"}
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+REQUEST_HEADER = "X-Mogao-Request"
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if (
+            request.method in WRITE_METHODS
+            and request.headers.get(REQUEST_HEADER) != "1"
+        ):
+            return Response(content="Request header required", status_code=403)
+
         if request.url.path in PUBLIC_PATHS:
             return await call_next(request)
 

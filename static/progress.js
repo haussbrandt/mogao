@@ -6,6 +6,23 @@ let ignoreNextScroll = false;
 const charProgressDisplay = document.getElementById("char-progress");
 const bookContentElement = document.getElementsByClassName("book-content")[0];
 
+function saveProgress(percentage) {
+  fetch("/api/save-progress", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
+    body: JSON.stringify({
+      book_id: window.MOGAO_CONFIG.bookId,
+      chapter_index: window.MOGAO_CONFIG.chapterIndex,
+      scroll_percentage: percentage,
+    }),
+    keepalive: true,
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error(`Progress save failed (${response.status})`);
+    })
+    .catch((error) => console.error("Failed to save progress:", error));
+}
+
 function countChineseChars(str) {
   const matches = str.match(/[\u4e00-\u9fff]/g);
   return matches ? matches.length : 0;
@@ -125,6 +142,7 @@ function updateCharProgress() {
 window.addEventListener("load", function () {
   updateCharProgress();
   const savedPercentage = window.MOGAO_CONFIG.initialScroll;
+  saveProgress(savedPercentage);
   if (savedPercentage > 0) {
     const maxScroll = mainContent.scrollHeight - mainContent.clientHeight;
     if (maxScroll <= 0) return;
@@ -161,15 +179,7 @@ mainContent.addEventListener("scroll", function () {
     scrollPercentage = (mainContent.scrollTop / maxScroll) * 100;
     if (!isFinite(scrollPercentage)) return;
 
-    fetch("/api/save-progress", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        book_id: window.MOGAO_CONFIG.bookId,
-        chapter_index: window.MOGAO_CONFIG.chapterIndex,
-        scroll_percentage: scrollPercentage,
-      }),
-    }).catch((err) => console.error("Failed to save progress:", err));
+    saveProgress(scrollPercentage);
   }, 100);
 });
 

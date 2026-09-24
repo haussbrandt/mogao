@@ -17,7 +17,7 @@ window.addToAnki = function (btn, id) {
   window.markWordKnown?.(word);
   fetch("/api/new-card", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
     body: JSON.stringify({
       book_id: id,
       word: word,
@@ -49,7 +49,7 @@ window.addToAnkiFromVideo = function (btn, id) {
   window.markWordKnown?.(word);
   fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/new-card-from-video`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
     body: JSON.stringify({
       book_id: id,
       word: word,

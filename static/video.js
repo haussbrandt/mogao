@@ -10,13 +10,14 @@ const progressSaveInterval = 5000;
 let lastProgressSave = 0;
 
 function saveVideoProgress(keepalive = false) {
+  if (video.readyState < HTMLMediaElement.HAVE_METADATA) return;
   const secondsSinceStart = video.currentTime;
   if (!Number.isFinite(secondsSinceStart)) return;
 
   lastProgressSave = Date.now();
   fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-progress`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
     body: JSON.stringify({
       video_id: window.MOGAO_CONFIG.videoId,
       seconds_since_start: secondsSinceStart,
@@ -35,10 +36,16 @@ function restoreVideoProgress() {
 
 if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
   restoreVideoProgress();
+  saveVideoProgress();
 } else {
-  video.addEventListener("loadedmetadata", restoreVideoProgress, {
-    once: true,
-  });
+  video.addEventListener(
+    "loadedmetadata",
+    () => {
+      restoreVideoProgress();
+      saveVideoProgress();
+    },
+    { once: true },
+  );
 }
 
 video.addEventListener("timeupdate", () => {
@@ -279,7 +286,7 @@ function setSubtitleActionsDisabled(disabled) {
 async function submitSubtitleChange(action, body) {
   const response = await fetch(
     `${window.MOGAO_CONFIG.videoBasePath}/${action}-subtitles/${window.MOGAO_CONFIG.videoId}`,
-    { method: "POST", body },
+    { method: "POST", headers: { "X-Mogao-Request": "1" }, body },
   );
   if (!response.ok) {
     const data = await response.json().catch(() => null);

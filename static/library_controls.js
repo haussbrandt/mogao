@@ -38,7 +38,10 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const response = await fetch(saveUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Mogao-Request": "1",
+        },
         body: JSON.stringify({ sort_order: selector.value }),
       });
       if (!response.ok) {
@@ -48,6 +51,28 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Could not save sort order", error);
     }
   });
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target.closest("form[data-mogao-form]");
+  if (!form || event.defaultPrevented) return;
+
+  event.preventDefault();
+  const submitter = event.submitter;
+  if (submitter) submitter.disabled = true;
+
+  try {
+    const response = await fetch(form.action, {
+      method: form.method,
+      headers: { "X-Mogao-Request": "1" },
+      body: new FormData(form),
+    });
+    if (!response.ok) throw new Error(`Request failed (${response.status})`);
+    window.location.reload();
+  } catch (error) {
+    alert(error.message);
+    if (submitter) submitter.disabled = false;
+  }
 });
 
 document.querySelectorAll("[data-library-switcher]").forEach((switcher) => {

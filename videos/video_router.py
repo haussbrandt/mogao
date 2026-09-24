@@ -1007,7 +1007,6 @@ async def watch_video(request: Request, video_id: UUID):
 
     progress = load_video_progress(video_id_string)
     seconds_since_start = progress.get("seconds_since_start", 0)
-    save_video_progress(video_id_string, seconds_since_start)
 
     deck_words = set()
     known_words = set()

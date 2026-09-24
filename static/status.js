@@ -25,7 +25,10 @@
   async function submitStatusAction(form) {
     const response = await fetch(form.action, {
       method: form.method,
-      headers: { "X-Requested-With": "status-page" },
+      headers: {
+        "X-Requested-With": "status-page",
+        "X-Mogao-Request": "1",
+      },
       signal: AbortSignal.timeout(15_000),
     });
     if (response.ok) return;
