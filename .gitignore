@@ -13,6 +13,7 @@ dicts/
 samples/
 library/
 video_library/
+video_uploads/
 
 .env
 config.toml
