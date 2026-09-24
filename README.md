@@ -93,6 +93,7 @@ uses `POSTPROCESSING_API_KEY`, while book and video dictionary generation use
 #### config.toml
 
 You can configure certain features of Mogao like the Anki deck and field names, paths, AI models used etc. in `config.toml`.
+See the [complete `config.toml` reference](docs/CONFIG.md) for every available field.
 
 If you don't want to use specific features, you can disable them by setting their `enabled` value to `false`.
 
