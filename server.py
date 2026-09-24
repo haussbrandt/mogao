@@ -510,7 +510,7 @@ async def serve_image(book_id: UUID, image_name: str):
     if not os.path.exists(img_path):
         raise HTTPException(status_code=404, detail="Image not found")
 
-    return FileResponse(img_path)
+    return FileResponse(img_path, headers={"Content-Security-Policy": "sandbox"})
 
 
 if __name__ == "__main__":
