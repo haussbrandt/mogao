@@ -2,6 +2,8 @@
 
 Mogao is a mobile-first EPUB reader and video player for Chinese learners with instant dictionary lookups and Anki flashcard creation.
 
+Try the Chinese EPUB reader and video player in the [Mogao live demo](https://mogao.org/).
+
 <p align="center">
   <img
     src="docs/assets/screenshot_popup.jpg"
