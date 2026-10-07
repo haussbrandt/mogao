@@ -442,6 +442,27 @@ async def delete_book(book_id: UUID):
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.get("/read/latest", response_class=HTMLResponse)
+async def redirect_to_latest_book():
+    """Resume the book with the most recently saved reading progress."""
+    candidates = []
+    if settings.paths.library.is_dir():
+        for item in os.listdir(settings.paths.library):
+            try:
+                progress_path = get_book_progress_path(item)
+                if progress_path.is_file():
+                    candidates.append((progress_path.stat().st_mtime_ns, item))
+            except (ValueError, OSError):
+                continue
+
+    for _, book_id in sorted(candidates, reverse=True):
+        book = load_book_cached(book_id)
+        if book and book.spine:
+            return await redirect_to_last_read(UUID(book_id))
+
+    return RedirectResponse(url="/", status_code=303)
+
+
 @app.get("/read/{book_id}", response_class=HTMLResponse)
 async def redirect_to_last_read(book_id: UUID):
     """Helper to go to the last read chapter."""
