@@ -32,19 +32,7 @@
               <span class="library-switcher-chevron" aria-hidden="true"></span>
             </button>
           </h1>
-          <nav
-            id="library-switcher-menu"
-            class="library-switcher-menu"
-            aria-label="Choose section"
-            data-library-switcher-menu
-            hidden
-          >
-            <a href="/">Books</a>
-            {% if video_enabled %}
-            <a href="{{ url_for('video_library_view') }}">Videos</a>
-            {% endif %}
-            <a href="/status" aria-current="page">Status</a>
-          </nav>
+          {% with current_section="status" %}{% include "section_navigation.html" %}{% endwith %}
         </div>
       </div>
 

@@ -28,7 +28,7 @@
       href="{{ url_for('static', path='site.webmanifest') }}"
     />
   </head>
-  <body>
+  <body data-anki-enabled="{{ anki_enabled | tojson }}">
     <div class="container">
       <div class="header-row">
         <div class="library-switcher" data-library-switcher>
@@ -44,19 +44,7 @@
               <span class="library-switcher-chevron" aria-hidden="true"></span>
             </button>
           </h1>
-          <nav
-            id="library-switcher-menu"
-            class="library-switcher-menu"
-            aria-label="Choose section"
-            data-library-switcher-menu
-            hidden
-          >
-            <a href="/" aria-current="page">Books</a>
-            {% if video_enabled %}
-            <a href="{{ url_for('video_library_view') }}">Videos</a>
-            {% endif %}
-            <a href="/status">Status</a>
-          </nav>
+          {% with current_section="library" %}{% include "section_navigation.html" %}{% endwith %}
         </div>
         <div class="controls-wrapper">
           <select id="sort-selector" data-sort-selector>
@@ -70,6 +58,10 @@
             <option value="chars_rev" data-field="chars" data-kind="number" data-direction="asc" {% if current_sort == 'chars_rev' %}selected{% endif %}>Character Count (Lowest)</option>
             <option value="mined" data-field="mined" data-kind="number" data-direction="desc" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
             <option value="mined_rev" data-field="mined" data-kind="number" data-direction="asc" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
+            {% if anki_enabled %}
+            <option value="coverage" data-field="coverage" data-kind="number" data-direction="desc" {% if current_sort == 'coverage' %}selected{% endif %}>Vocabulary (Easiest)</option>
+            <option value="coverage_rev" data-field="coverage" data-kind="number" data-direction="asc" {% if current_sort == 'coverage_rev' %}selected{% endif %}>Vocabulary (Hardest)</option>
+            {% endif %}
           </select>
           <form action="/upload" method="post" enctype="multipart/form-data" data-mogao-form>
             <label for="epub-upload" class="btn upload-btn">
@@ -90,6 +82,7 @@
       <div
         class="book-grid sort-pending"
         data-sort-grid
+        data-coverage-kind="books"
         data-sort-save-url="/api/save-sort"
       >
         {% for book in books %}
@@ -146,11 +139,15 @@
             {% else %} {{"{:,}".format(book.tagged_cards_count).replace(',', '
             ') }} mined cards<br />
             {% endif %}
+            {% if anki_enabled %}
+            <button type="button" class="coverage-button" data-coverage-id="{{ book.id }}" data-coverage-title="{{ book.title }}" data-dictionary-url="/api/book-dict/{{ book.id }}" title="Vocabulary coverage">… known</button>
+            {% endif %}
           </div>
         </div>
         {% endfor %}
       </div>
     </div>
-    <script src="{{ url_for('static', path='library_controls.js') }}?v=2"></script>
+    {% if anki_enabled %}{% include 'coverage_dialog.html' %}{% endif %}
+    <script src="{{ url_for('static', path='library_controls.js') }}?v=3"></script>
   </body>
 </html>

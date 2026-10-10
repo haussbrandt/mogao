@@ -24,6 +24,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import AnyHttpUrl, BaseModel
 
 from core.config import settings
+from core.coverage import VOCABULARY_STATS_FILENAME, refresh_coverage
+from core.known_words import load_local_vocabulary
 from core.dependencies import postprocessor, templates
 from core.paths import (
     get_video_dict_path,
@@ -486,8 +488,12 @@ async def _change_subtitles(video_id: UUID, source: BinaryIO | None = None) -> N
 
         backups = []
         try:
-            # Successful cleanup also discards the old subtitle dictionary.
-            for original in (subtitles_path, get_video_dict_path(video_id)):
+            # Commit/rollback subtitles, their dictionary, and coverage together.
+            for original in (
+                subtitles_path,
+                get_video_dict_path(video_id),
+                get_video_path(video_id, VOCABULARY_STATS_FILENAME),
+            ):
                 backup = None
                 if original.exists():
                     backup = staging_dir / original.name
@@ -540,6 +546,8 @@ async def upload_subtitles(video_id: UUID, file: UploadFile = File(...)):
 
     if settings.dictionary_generation.enabled:
         schedule_video_dictionary_job(str(video_id))
+    else:
+        asyncio.create_task(refresh_coverage("videos", str(video_id)))
 
     return {"status": "ok"}
 
@@ -805,6 +813,8 @@ async def download_and_process(processing_id: UUID, metadata: DownloadMetadata):
 
     if has_subtitles and settings.dictionary_generation.enabled:
         schedule_video_dictionary_job(video_id)
+    elif has_subtitles:
+        await refresh_coverage("videos", video_id)
 
 
 def process_video_download(
@@ -1024,6 +1034,7 @@ async def watch_video(request: Request, video_id: UUID):
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
             "known_words": list(known_words),
+            "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": [], "revision": 0},
             "anki_enabled": settings.anki.enabled,
             "video_base_path": VIDEO_BASE_PATH,
         },
@@ -1116,12 +1127,16 @@ async def video_library_view(request: Request):
 
     preferences = load_video_settings()
     current_sort = preferences.get("sort_order", "title")
+    if not settings.anki.enabled and current_sort in {"coverage", "coverage_rev"}:
+        current_sort = "title"
     return templates.TemplateResponse(
         request,
         "video_library.html",
         {
             "request": request,
             "videos": videos,
+            "anki_enabled": settings.anki.enabled,
+            "video_enabled": settings.video.enabled,
             "video_base_path": VIDEO_BASE_PATH,
             "current_sort": current_sort,
         },

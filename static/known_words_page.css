@@ -1,0 +1,61 @@
+.known-words-page {
+  color: var(--text-body);
+}
+.known-words-page .header-row {
+  margin-bottom: 20px;
+}
+#known-words-count,
+#known-words-search-status,
+#known-words-empty {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+#known-words-search-status:empty {
+  display: none;
+}
+#known-words-search {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-base);
+  color: var(--text-body);
+  font: inherit;
+}
+#known-words-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+#known-words-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+}
+.known-word-lookup {
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--text-body);
+  font: inherit;
+  font-size: 1.2rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.known-word-lookup:hover {
+  color: var(--accent-interactive);
+}
+#known-words-search:focus-visible,
+.known-word-lookup:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+#known-words-notice {
+  position: sticky;
+  bottom: 0;
+}

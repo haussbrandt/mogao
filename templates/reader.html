@@ -44,9 +44,11 @@
   <body>
     <button id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
     <a id="nav-home-btn" href="/">←</a>
+    {% if anki_enabled %}
     <button id="seg-toggle">i+1</button>
     <button id="stats-btn">%</button>
     <div id="stats-popup"></div>
+    {% endif %}
     <!-- SIDEBAR -->
     <div id="sidebar">
       <div class="nav-header">{{ book.metadata.title }}</div>
@@ -122,6 +124,8 @@
         ankiEnabled: {{ anki_enabled | tojson }},
         deckWords: {{ deck_words | tojson }},
         knownWords: {{ known_words | tojson }},
+        localKnownWords: {{ local_vocabulary.words | tojson }},
+        localKnownRevision: {{ local_vocabulary.revision | tojson }},
         spineMap: {
           {% for ch in book.spine %}
           {{ ch.href | tojson }}: {{ ch.order }},
@@ -136,9 +140,13 @@
     {% if anki_enabled %}
       <script src="{{ url_for('static', path='anki.js') }}?v=6"></script>
     {% endif %}
+    {% if anki_enabled %}
     <script src="{{ url_for('static', path='stats.js') }}?v=2"></script>
-    <script src="{{ url_for('static', path='segmenter.js') }}?v=4"></script>
-    <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='known_words.css') }}?v=4" />
+    <script src="{{ url_for('static', path='known_words.js') }}?v=7"></script>
+    {% endif %}
+    <script src="{{ url_for('static', path='segmenter.js') }}?v=6"></script>
+    <script src="{{ url_for('static', path='dictionary.js') }}?v=12"></script>
     <script src="{{ url_for('static', path='reader.js') }}?v=2"></script>
   </body>
 </html>

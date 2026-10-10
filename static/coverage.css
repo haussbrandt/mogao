@@ -1,0 +1,126 @@
+.coverage-button {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.coverage-button:hover {
+  color: var(--accent-interactive);
+  text-decoration: underline;
+}
+.coverage-button:focus-visible,
+.coverage-show-all:focus-visible,
+.coverage-scope-button:focus-visible,
+.coverage-word:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 3px;
+}
+#coverage-dialog {
+  width: min(720px, calc(100% - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-body);
+}
+#coverage-dialog::backdrop,
+#coverage-lookup::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+.coverage-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.coverage-heading h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+#coverage-item-title {
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  margin: 8px 0 16px;
+}
+#coverage-message:empty {
+  display: none;
+}
+#coverage-summary {
+  font-weight: 600;
+}
+.coverage-help {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+#coverage-word-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+}
+#coverage-word-summary dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+#coverage-chart {
+  width: 100%;
+  display: block;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
+#coverage-chart text {
+  fill: var(--text-secondary);
+  font-size: 12px;
+}
+#coverage-position {
+  width: 100%;
+  margin: 10px 0;
+  accent-color: var(--accent-interactive);
+}
+#coverage-section-title {
+  font-weight: 600;
+  margin: 8px 0;
+}
+#coverage-section {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+#coverage-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.coverage-word,
+.coverage-scope-button,
+.coverage-show-all {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: var(--text-body);
+  font: inherit;
+  cursor: pointer;
+}
+.coverage-word:hover,
+.coverage-scope-button:hover,
+.coverage-scope-button[aria-pressed="true"],
+.coverage-show-all:hover {
+  border-color: var(--accent-interactive);
+  color: var(--accent-interactive);
+}
+.coverage-show-all {
+  margin-top: 12px;
+}
+.coverage-word-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}

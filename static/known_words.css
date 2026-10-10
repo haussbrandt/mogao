@@ -1,0 +1,87 @@
+.local-known-action {
+  border: 0;
+  background: transparent;
+  color: var(--accent-interactive);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+.local-known-action:hover {
+  color: var(--accent-interactive-hover);
+}
+.local-known-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.local-known-toggle[hidden] {
+  display: none;
+}
+.local-known-toggle:hover,
+.local-known-toggle[aria-pressed="true"] {
+  border-color: var(--accent-interactive);
+  color: var(--accent-interactive);
+}
+.local-known-toggle:focus-visible,
+.local-known-action:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 3px;
+}
+.local-known-action:disabled,
+.local-known-toggle:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.local-known-notice {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  padding: 8px 15px;
+  font-size: 0.85rem;
+}
+
+/* Keep Anki at the far edge, away from the local known-word action. */
+.result-head .anki-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+#coverage-lookup {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 900px;
+  height: 55dvh;
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: var(--bg-base);
+  color: var(--text-body);
+  box-shadow: 0 -5px 20px var(--shadow-elevated);
+  font-family: system-ui, sans-serif;
+}
+#coverage-lookup[open] {
+  display: flex;
+  flex-direction: column;
+}
+#coverage-lookup .popup-body {
+  min-height: 0;
+}
+
+#coverage-lookup::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}

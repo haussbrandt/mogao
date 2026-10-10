@@ -123,6 +123,8 @@
       ankiEnabled: {{ anki_enabled | tojson }},
       deckWords: {{ deck_words | tojson }},
       knownWords: {{ known_words | tojson }},
+      localKnownWords: {{ local_vocabulary.words | tojson }},
+      localKnownRevision: {{ local_vocabulary.revision | tojson }},
     };
   </script>
 
@@ -130,7 +132,11 @@
   {% if anki_enabled %}
     <script src="{{ url_for('static', path='anki.js') }}?v=6"></script>
   {% endif %}
-  <script src="{{ url_for('static', path='segmenter.js') }}?v=4"></script>
-  <script src="{{ url_for('static', path='dictionary.js') }}?v=7"></script>
+  {% if anki_enabled %}
+  <link rel="stylesheet" href="{{ url_for('static', path='known_words.css') }}?v=4" />
+  <script src="{{ url_for('static', path='known_words.js') }}?v=7"></script>
+  {% endif %}
+  <script src="{{ url_for('static', path='segmenter.js') }}?v=6"></script>
+  <script src="{{ url_for('static', path='dictionary.js') }}?v=12"></script>
   <script src="{{ url_for('static', path='video.js' )}}?v=6"></script>
 </html>

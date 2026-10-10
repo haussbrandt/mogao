@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Optional
 
 from core.config import settings
+from core.coverage import refresh_coverage
 from core.paths import (
     get_book_dict_path,
     get_book_path,
@@ -319,6 +320,7 @@ async def process_book_background(book_id: str, book, resume: bool = False) -> N
         _save_book_dict,
         resume=resume,
     )
+    await refresh_coverage("books", book_id)
 
 
 async def process_subtitles_background(video_id, resume: bool = False) -> None:
@@ -344,6 +346,7 @@ async def process_subtitles_background(video_id, resume: bool = False) -> None:
         _save_video_dict,
         resume=resume,
     )
+    await refresh_coverage("videos", item_id)
 
 
 def _record_job_failure(

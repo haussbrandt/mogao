@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -618,7 +618,7 @@ wheels = [
 
 [[package]]
 name = "mogao"
-version = "1.36.6"
+version = "1.37.0"
 source = { virtual = "." }
 dependencies = [
     { name = "bcrypt" },

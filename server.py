@@ -34,8 +34,11 @@ from books.library import (
     save_settings,
 )
 from core.config import settings
+from core.coverage import refresh_coverage
+from core.coverage_router import router as coverage_router
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
+from core.known_words import load_local_vocabulary, router as known_words_router
 from core.paths import get_book_path, get_book_progress_path, unique_temp_path
 from core.status import build_status
 from integrations.anki import (
@@ -152,6 +155,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
+app.include_router(coverage_router)
+app.include_router(known_words_router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 if settings.video.enabled:
     app.mount(
@@ -288,6 +293,8 @@ async def library_view(request: Request):
 
     preferences = load_settings()
     current_sort = preferences.get("sort_order", "title")
+    if not settings.anki.enabled and current_sort in {"coverage", "coverage_rev"}:
+        current_sort = "title"
     return templates.TemplateResponse(
         request,
         "library.html",
@@ -296,7 +303,25 @@ async def library_view(request: Request):
             "books": books,
             "current_sort": current_sort,
             "video_enabled": settings.video.enabled,
+            "anki_enabled": settings.anki.enabled,
         },
+    )
+
+
+@app.get("/known-words", response_class=HTMLResponse)
+async def known_words_view(request: Request):
+    if not settings.anki.enabled:
+        raise HTTPException(404, "Known words are disabled")
+    return templates.TemplateResponse(
+        request,
+        "known_words.html",
+        {
+            "request": request,
+            "local_vocabulary": load_local_vocabulary(),
+            "video_enabled": settings.video.enabled,
+            "anki_enabled": True,
+        },
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -311,6 +336,7 @@ async def status_view(request: Request):
                 build_status, postprocessor, video_router.snapshot_processing_jobs()
             ),
             "video_enabled": settings.video.enabled,
+            "anki_enabled": settings.anki.enabled,
         },
     )
 
@@ -410,6 +436,8 @@ async def upload_book(files: list[UploadFile] = File(...)):
             book_id = str(book.metadata.generate_key())
             if settings.dictionary_generation.enabled:
                 asyncio.create_task(process_book_background(book_id, book))
+            else:
+                asyncio.create_task(refresh_coverage("books", book_id))
 
         except Exception:
             logger.exception("Error processing book")
@@ -511,6 +539,7 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
             "initial_scroll_percentage": initial_scroll_percentage,
             "deck_words": list(deck_words),
             "known_words": list(known_words),
+            "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": [], "revision": 0},
             "anki_enabled": settings.anki.enabled,
         },
     )

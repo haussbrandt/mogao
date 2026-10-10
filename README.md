@@ -27,6 +27,7 @@ Try the Chinese EPUB reader and video player in the [Mogao live demo](https://mo
 - ✨ Effortless flashcard enrichment with pinyin, translation and audio
 - 🧩 Automatic i+1 sentence detection with the new word highlighted
 - 📚 Custom dictionary generation per book/video for rare and specific words
+- 📊 Comprehension score calculation based on book/video vocabulary and your known words
 - 📱 Designed for use on phones and tablets
 
 Currently, only Simplified Chinese characters are supported. Traditional Chinese character support will be added in the future.

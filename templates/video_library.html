@@ -31,7 +31,7 @@
       href="{{ url_for('static', path='site.webmanifest') }}"
     />
   </head>
-  <body data-video-base-path="{{ video_base_path }}">
+  <body data-anki-enabled="{{ anki_enabled | tojson }}" data-video-base-path="{{ video_base_path }}">
     <div class="container">
       <div class="header-row">
         <div class="library-switcher" data-library-switcher>
@@ -47,17 +47,7 @@
               <span class="library-switcher-chevron" aria-hidden="true"></span>
             </button>
           </h1>
-          <nav
-            id="library-switcher-menu"
-            class="library-switcher-menu"
-            aria-label="Choose section"
-            data-library-switcher-menu
-            hidden
-          >
-            <a href="/">Books</a>
-            <a href="{{ url_for('video_library_view') }}" aria-current="page">Videos</a>
-            <a href="/status">Status</a>
-          </nav>
+          {% with current_section="video_library" %}{% include "section_navigation.html" %}{% endwith %}
         </div>
         <div class="controls-wrapper">
           <!-- prettier-ignore -->
@@ -74,6 +64,10 @@
             <option value="length_rev" data-field="duration" data-kind="number" data-direction="asc" {% if current_sort == 'length_rev' %}selected{% endif %}>Duration (Shortest)</option>
             <option value="mined" data-field="mined" data-kind="number" data-direction="desc" {% if current_sort == 'mined' %}selected{% endif %}>Mined Cards (Highest)</option>
             <option value="mined_rev" data-field="mined" data-kind="number" data-direction="asc" {% if current_sort == 'mined_rev' %}selected{% endif %}>Mined Cards (Lowest)</option>
+            {% if anki_enabled %}
+            <option value="coverage" data-field="coverage" data-kind="number" data-direction="desc" {% if current_sort == 'coverage' %}selected{% endif %}>Vocabulary (Easiest)</option>
+            <option value="coverage_rev" data-field="coverage" data-kind="number" data-direction="asc" {% if current_sort == 'coverage_rev' %}selected{% endif %}>Vocabulary (Hardest)</option>
+            {% endif %}
           </select>
           <div class="yt-input-wrapper">
             <input
@@ -113,6 +107,7 @@
       <div
         class="video-grid sort-pending"
         data-sort-grid
+        data-coverage-kind="videos"
         data-sort-save-url="{{ video_base_path }}/api/save-sort"
       >
         {% for video in videos %}
@@ -157,12 +152,16 @@
             {% else %} {{"{:,}".format(video.tagged_cards_count).replace(',', '
             ') }} mined cards<br />
             {% endif %}
+            {% if anki_enabled %}
+            <button type="button" class="coverage-button" data-coverage-id="{{ video.id }}" data-coverage-title="{{ video.title }}" data-dictionary-url="{{ video_base_path }}/api/video-dict/{{ video.id }}" title="Vocabulary coverage">… known</button>
+            {% endif %}
           </div>
         </div>
         {% endfor %}
       </div>
     </div>
-    <script src="{{ url_for('static', path='library_controls.js') }}?v=2"></script>
+    {% if anki_enabled %}{% include 'coverage_dialog.html' %}{% endif %}
+    <script src="{{ url_for('static', path='library_controls.js') }}?v=3"></script>
     <script src="{{ url_for('static', path='video_library.js') }}?v=3"></script>
   </body>
 </html>

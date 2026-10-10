@@ -1,25 +1,54 @@
 let localDict = null;
+const generatedWords = new Set();
+
+document.addEventListener("DOMContentLoaded", () => {
+  const dialog = document.getElementById("coverage-lookup");
+  if (!dialog) return;
+  let startedOutside = false;
+  const outside = (event) => {
+    const rect = dialog.getBoundingClientRect();
+    return event.target === dialog &&
+      (event.clientX < rect.left || event.clientX > rect.right ||
+       event.clientY < rect.top || event.clientY > rect.bottom);
+  };
+  dialog.addEventListener("pointerdown", (event) => { startedOutside = outside(event); });
+  dialog.addEventListener("pointercancel", () => { startedOutside = false; });
+  dialog.addEventListener("click", (event) => {
+    if (startedOutside && outside(event)) dialog.close();
+    startedOutside = false;
+  });
+  dialog.addEventListener("close", () => { startedOutside = false; });
+});
 
 const GENERATED_DICTIONARY_POLL_INTERVAL_MS = 30_000;
 
 const CEDICT_REFERENCE_PATTERN =
   /([^\s()[\]{}"'“”‘’<>《》〈〉「」『』【】,;:]+)\[([^\]]+)\]/gu;
 
-window.dictionaryReady = fetch("/static/dict.json?v=3")
-  .then((r) => r.json())
-  .then((data) => {
-    localDict = data;
-    window.localDict = localDict;
-    console.log("Dictionary loaded");
-    const known = buildKnownSet();
-    annotateBookContent(localDict, known);
-    const content = document.querySelector(".book-content");
-    if (content) initStatsButton(content);
-  })
-  .catch((err) => {
-    console.error("Failed to load dictionary", err);
-    throw err;
-  });
+function loadDictionary() {
+  if (window.dictionaryReady) return window.dictionaryReady;
+  window.dictionaryReady = fetch("/static/dict.json?v=3")
+    .then((r) => {
+      if (!r.ok) throw new Error("Could not load dictionary.");
+      return r.json();
+    })
+    .then((data) => {
+      localDict = data;
+      window.localDict = localDict;
+      console.log("Dictionary loaded");
+      const content = document.querySelector(".book-content");
+      if (content && window.MOGAO_CONFIG?.ankiEnabled) {
+        annotateBookContent(localDict, buildKnownSet());
+        initStatsButton(content);
+      }
+    })
+    .catch((err) => {
+      console.error("Failed to load dictionary", err);
+      window.dictionaryReady = null;
+      throw err;
+    });
+  return window.dictionaryReady;
+}
 
 function toGeneratedDictionaryEntry(raw) {
   return {
@@ -39,10 +68,17 @@ function mergeGeneratedDictionaryWords(words) {
   for (const [word, raw] of Object.entries(words)) {
     if (!localDict[word]) {
       localDict[word] = toGeneratedDictionaryEntry(raw);
+      generatedWords.add(word);
       added++;
     }
   }
   return added;
+}
+
+function replaceGeneratedDictionaryWords(words) {
+  for (const word of generatedWords) delete localDict[word];
+  generatedWords.clear();
+  mergeGeneratedDictionaryWords(words);
 }
 
 async function fetchAndMergeGeneratedDictionary(url) {
@@ -69,7 +105,7 @@ async function loadGeneratedDictionary() {
   if (!url) return;
 
   try {
-    await window.dictionaryReady;
+    await loadDictionary();
   } catch {
     return;
   }
@@ -83,7 +119,11 @@ async function loadGeneratedDictionary() {
   }, GENERATED_DICTIONARY_POLL_INTERVAL_MS);
 }
 
-void loadGeneratedDictionary();
+// Readers initialize immediately; other views choose when to warm the dictionary.
+if (document.querySelector(".book-content") || window.MOGAO_CONFIG?.generatedDictionaryUrl) {
+  void loadDictionary().catch(() => {});
+  void loadGeneratedDictionary();
+}
 
 function formatDictionaryFrequency(frequency) {
   if (!frequency) return null;
@@ -320,7 +360,7 @@ function createDictionaryPopupRenderer(container, options = {}) {
       const resultItem = document.createElement("div");
       resultItem.className = "result-item";
 
-      for (const entry of item.entries) {
+      for (const [index, entry] of item.entries.entries()) {
         const head = document.createElement("div");
         head.className = "result-head";
 
@@ -339,6 +379,11 @@ function createDictionaryPopupRenderer(container, options = {}) {
           badge.className = "freq-badge";
           badge.textContent = `#${item.frequency}`;
           head.appendChild(badge);
+        }
+
+        if (index === 0) {
+          const knownButton = window.LocalVocabulary?.createButton(item.word);
+          if (knownButton) head.appendChild(knownButton);
         }
 
         const action = options.createEntryAction?.({

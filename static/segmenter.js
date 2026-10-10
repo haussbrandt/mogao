@@ -3,6 +3,9 @@ const OOV_PENALTY = Math.log(50_001);
 const LENGTH_BONUS = 4;
 const NO_FREQ_KNOWN = 200;
 const NO_FREQ_UNKNOWN = 8000;
+// Math.log can differ by one floating-point bit between JS engines and Python.
+// Treat numerically equal path costs as ties before comparing segment counts.
+const RANK_EPSILON = 1e-10;
 const NUMBERS = new Set("零一二三四五六七八九十百千万亿两");
 let _known = null;
 
@@ -40,7 +43,10 @@ function isCompositionallyKnown(word, known) {
 }
 
 function buildKnownSet() {
-  return new Set(window.MOGAO_CONFIG.knownWords);
+  return new Set([
+    ...window.MOGAO_CONFIG.knownWords,
+    ...(window.MOGAO_CONFIG.localKnownWords || []),
+  ]);
 }
 
 // DP Segmentation
@@ -80,9 +86,9 @@ function segment(sentence, dict, known) {
       if (
         !dp[i] ||
         c.oov < dp[i].oov ||
-        (c.oov === dp[i].oov && c.logRank < dp[i].logRank) ||
+        (c.oov === dp[i].oov && c.logRank < dp[i].logRank - RANK_EPSILON) ||
         (c.oov === dp[i].oov &&
-          c.logRank === dp[i].logRank &&
+          Math.abs(c.logRank - dp[i].logRank) <= RANK_EPSILON &&
           c.segs < dp[i].segs)
       ) {
         dp[i] = c;
@@ -102,8 +108,9 @@ const CHINESE_RE = /[\u4e00-\u9fff]/;
 
 function classifyWord(word, dict, known) {
   if (isPunct(word)) return "punct";
+  if (known.has(word)) return "known";
   if (!dict[word]) return "oov";
-  if (known.has(word) || isCompositionallyKnown(word, known)) return "known";
+  if (isCompositionallyKnown(word, known)) return "known";
   return "unknown";
 }
 
@@ -324,6 +331,13 @@ window.reannotateWithNewDict = function (newDict) {
 window.markWordKnown = function (word) {
   if (!word || !_known) return;
 
+  window.MOGAO_CONFIG.knownWords.push(word);
   _known.add(word);
   window.reannotateWithNewDict(window.localDict);
 };
+
+window.addEventListener("mogao:known-words-changed", () => {
+  if (!_known) return;
+  _known = buildKnownSet();
+  window.reannotateWithNewDict(window.localDict);
+});

@@ -18,6 +18,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const left = leftCard.dataset[field] ?? "";
       const right = rightCard.dataset[field] ?? "";
 
+      // Items awaiting analysis belong at the end in either direction.
+      if (field === "coverage" && (left === "" || right === "")) {
+        return (left === "" ? 1 : 0) - (right === "" ? 1 : 0);
+      }
+
       if (kind === "number") {
         return (Number(left) - Number(right)) * directionMultiplier;
       }
@@ -29,6 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   sortCards();
+  grid.addEventListener("coverage:updated", sortCards);
   grid.classList.remove("sort-pending");
 
   selector.addEventListener("change", async () => {
