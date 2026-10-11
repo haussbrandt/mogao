@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import pickle
 import shutil
@@ -11,6 +12,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from fractions import Fraction
 from pathlib import Path
 
 from core.paths import get_video_path, unique_temp_path
@@ -161,23 +163,28 @@ def probe_video_codec(path: str | os.PathLike[str]) -> str:
     return result.stdout.strip()
 
 
-def probe_audio_codec(path: str | os.PathLike[str]) -> str:
-    result = run_media_command(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a:0",
-            "-show_entries",
-            "stream=codec_name",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            path,
-        ],
-        timeout=PROBE_TIMEOUT_SECONDS,
-    )
-    return result.stdout.strip()
+def select_mandarin_audio(audio_streams: list[dict]) -> dict | None:
+    """Prefer Mandarin, then broadly tagged Chinese, for multi-audio imports."""
+    if len(audio_streams) <= 1:
+        return None
+
+    chinese_stream = None
+    for stream in audio_streams:
+        language = (
+            stream.get("tags", {}).get("language", "").lower().replace("_", "-")
+        )
+        parts = language.split("-")
+        if parts[0] == "cmn":
+            return stream
+        if parts[0] in ("zh", "zho", "chi"):
+            # A three-letter extlang identifies a specific Chinese language.
+            if len(parts) > 1 and len(parts[1]) == 3 and parts[1].isalpha():
+                if parts[1] == "cmn":
+                    return stream
+                continue
+            if chinese_stream is None:
+                chinese_stream = stream
+    return chinese_stream
 
 
 def generate_video(
@@ -198,10 +205,50 @@ def generate_video(
     ]
     result = run_media_command(cmd, timeout=PROBE_TIMEOUT_SECONDS)
     metadata = json.loads(result.stdout)
+    audio_streams = [
+        stream for stream in metadata["streams"] if stream.get("codec_type") == "audio"
+    ]
+    selected_audio = select_mandarin_audio(audio_streams)
+    audio_input_options = []
+    if selected_audio is not None:
+        # Discard other audio tracks at the input so FFmpeg can still select
+        # video automatically, including its default and resolution preferences.
+        for stream in audio_streams:
+            if stream["index"] != selected_audio["index"]:
+                audio_input_options.extend([f"-discard:{stream['index']}", "all"])
+        audio_codec = selected_audio.get("codec_name", "")
+    else:
+        # FFmpeg selects audio automatically. Only copy if every possible
+        # selection is AAC; the first track's codec may differ from its choice.
+        audio_codec = (
+            "aac"
+            if all(stream.get("codec_name") == "aac" for stream in audio_streams)
+            else ""
+        )
 
     file_size = metadata["format"]["size"]
-    duration = metadata["streams"][0]["duration"]
-    duration_ts = metadata["streams"][0]["duration_ts"]
+    first_stream = next(iter(metadata["streams"]), {})
+    duration = first_stream.get("duration")
+    if duration in (None, "N/A"):
+        duration = metadata["format"].get("duration")
+    try:
+        duration_seconds = float(duration)
+    except (TypeError, ValueError):
+        raise ValueError("Unable to determine video duration") from None
+    if not math.isfinite(duration_seconds) or duration_seconds <= 0:
+        raise ValueError("Unable to determine a positive video duration")
+
+    duration_ts = first_stream.get("duration_ts")
+    if duration_ts in (None, "N/A"):
+        # MKV often reports duration only at container level. Derive ticks in
+        # the stream's time base, or use microseconds if no time base is known.
+        try:
+            time_base = Fraction(first_stream.get("time_base", "1/1000000"))
+            if time_base <= 0:
+                raise ValueError
+        except (TypeError, ValueError, ZeroDivisionError):
+            time_base = Fraction(1, 1000000)
+        duration_ts = round(Fraction(str(duration)) / time_base)
 
     metadata = Metadata(original_filename, duration_ts, duration, file_size)
     unique_key = metadata.generate_key()
@@ -218,11 +265,11 @@ def generate_video(
         cover_output_path = processing_dir / "cover.jpg"
         metadata_output_path = processing_dir / "video.pkl"
         video_codec = probe_video_codec(path)
-        audio_codec = probe_audio_codec(path)
         if video_codec in ("hevc", "h264"):
             # Already a Safari-compatible codec — just remux video, no quality loss, can convert audio
             ffmpeg_cmd = [
                 "ffmpeg",
+                *audio_input_options,
                 "-i",
                 path,
                 "-c:v",
@@ -238,6 +285,7 @@ def generate_video(
             # Re-encode to H.264
             ffmpeg_cmd = [
                 "ffmpeg",
+                *audio_input_options,
                 "-i",
                 path,
                 "-c:v",
