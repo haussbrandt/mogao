@@ -45,7 +45,7 @@ function isCompositionallyKnown(word, known) {
 function buildKnownSet() {
   return new Set([
     ...window.MOGAO_CONFIG.knownWords,
-    ...(window.MOGAO_CONFIG.localKnownWords || []),
+    ...Object.keys(window.MOGAO_CONFIG.localKnownWords || {}),
   ]);
 }
 

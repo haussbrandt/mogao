@@ -1,7 +1,7 @@
 (() => {
   const enabled = window.MOGAO_CONFIG?.ankiEnabled ?? (document.body.dataset.ankiEnabled === "true");
   if (!enabled) return;
-  let words = new Set(window.MOGAO_CONFIG?.localKnownWords || []);
+  let words = new Set(Object.keys(window.MOGAO_CONFIG?.localKnownWords || {}));
   let revision = window.MOGAO_CONFIG?.localKnownRevision ?? -1;
   const channel =
     typeof BroadcastChannel === "function"
@@ -12,9 +12,9 @@
     if (!Number.isSafeInteger(nextRevision) || nextRevision < revision) return false;
     if (nextRevision === revision) return true;
     revision = nextRevision;
-    words = new Set(values);
+    words = new Set(Object.keys(values));
     if (window.MOGAO_CONFIG) {
-      window.MOGAO_CONFIG.localKnownWords = [...words];
+      window.MOGAO_CONFIG.localKnownWords = values;
       window.MOGAO_CONFIG.localKnownRevision = revision;
     }
     document.querySelectorAll("[data-local-known-word]").forEach(updateButton);
@@ -63,10 +63,15 @@
     button.disabled = true;
     document.querySelectorAll(".local-known-notice").forEach((node) => node.remove());
     try {
+      const raw = known ? window.localDict?.[word] : null;
+      const definition = raw?.e?.length ? {
+        e: raw.e.map((entry) => ({ p: entry.p || "", d: entry.d || [] })),
+        llm: !!raw.llm,
+      } : undefined;
       const response = await fetch("/api/known-words", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
-        body: JSON.stringify({ word, known }),
+        body: JSON.stringify({ word, known, definition }),
       });
       if (!response.ok) throw new Error("Could not save this word. Try again.");
       const result = await response.json();

@@ -1034,7 +1034,7 @@ async def watch_video(request: Request, video_id: UUID):
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
             "known_words": list(known_words),
-            "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": [], "revision": 0},
+            "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": {}, "revision": 0},
             "anki_enabled": settings.anki.enabled,
             "video_base_path": VIDEO_BASE_PATH,
         },

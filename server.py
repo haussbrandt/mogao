@@ -539,7 +539,7 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
             "initial_scroll_percentage": initial_scroll_percentage,
             "deck_words": list(deck_words),
             "known_words": list(known_words),
-            "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": [], "revision": 0},
+            "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": {}, "revision": 0},
             "anki_enabled": settings.anki.enabled,
         },
     )

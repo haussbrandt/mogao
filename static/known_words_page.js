@@ -13,11 +13,64 @@ document.addEventListener("DOMContentLoaded", () => {
   let lookupRequest = 0;
   let searchLoading = false;
   let searchError = false;
+  let dictionaryReady = null;
+  let dictionaryLoaded = false;
+  let refreshRequest = 0;
+  const savedOriginals = new Map();
+
+  function loadKnownDictionary() {
+    if (dictionaryReady) return dictionaryReady;
+    const pending = Promise.all([
+      loadDictionary(),
+      fetch("/api/known-words/definitions", { cache: "no-store" }).then(async (response) => {
+        if (!response.ok) throw new Error("Could not load generated definitions.");
+        return response.json();
+      }),
+    ]).then(([, generated]) => {
+      if (dictionaryReady !== pending) return loadKnownDictionary();
+      // Restore main dictionary entries before replacing the previous snapshots.
+      for (const [word, original] of savedOriginals) {
+        if (original) window.localDict[word] = original;
+        else delete window.localDict[word];
+      }
+      savedOriginals.clear();
+      replaceGeneratedDictionaryWords(generated.words);
+      for (const word of generated.saved_words || []) {
+        const raw = generated.words[word];
+        const original = window.localDict[word];
+        savedOriginals.set(word, original);
+        window.localDict[word] = { ...raw, f: original?.f, llm: !!raw.llm };
+      }
+      dictionaryLoaded = true;
+    }).catch((error) => {
+      if (dictionaryReady !== pending) return loadKnownDictionary();
+      dictionaryReady = null;
+      throw error;
+    });
+    dictionaryReady = pending;
+    return pending;
+  }
+
+  async function refreshDictionary() {
+    const request = ++refreshRequest;
+    searchLoading = true;
+    searchError = false;
+    render();
+    try {
+      await loadKnownDictionary();
+    } catch {
+      if (request === refreshRequest) searchError = true;
+    } finally {
+      if (request === refreshRequest) {
+        searchLoading = false;
+        render();
+      }
+    }
+  }
 
   function render() {
     const words = vocabulary.list();
     const query = search.value.trim();
-    if (window.localDict) searchError = false;
     const matching = findWords(words, query, window.localDict);
     list.replaceChildren();
     for (const word of matching.slice(0, limit)) {
@@ -40,7 +93,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("known-words-count").textContent =
       query ? `${matching.length} / ${words.length} words` : `${words.length} ${words.length === 1 ? "word" : "words"}`;
     document.getElementById("known-words-search-status").textContent = !query ? "" :
-      searchLoading ? "Loading dictionary…" : searchError ? "Dictionary unavailable. Type to retry." : "";
+      searchLoading ? "Loading dictionary…" : searchError ? "Definitions unavailable. Type to retry." : "";
     list.setAttribute("aria-busy", String(!!query && searchLoading));
     const empty = document.getElementById("known-words-empty");
     empty.hidden = matching.length > 0 || (!!query && searchLoading);
@@ -57,7 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
     message.textContent = "Loading…";
     body.appendChild(message);
     try {
-      await loadDictionary();
+      await loadKnownDictionary();
       if (request !== lookupRequest) return;
       renderer.show([dictionaryResultForWord(word) || {
         word, entries: [{ pinyin: "", definitions: ["No definition found."] }],
@@ -69,23 +122,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   search.addEventListener("input", async () => {
     limit = 100;
-    if (!search.value.trim() || window.localDict || searchLoading) { render(); return; }
-    searchLoading = true;
-    searchError = false;
-    render();
-    try {
-      await loadDictionary();
-    } catch {
-      searchError = true;
-    } finally {
-      searchLoading = false;
-      render(); // Use the current query, even if it changed during loading.
-    }
+    if (!search.value.trim() || dictionaryLoaded || searchLoading) { render(); return; }
+    await refreshDictionary();
   });
   more.addEventListener("click", () => { limit += 100; render(); });
   document.getElementById("coverage-lookup-close").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => { lookupRequest++; renderer.reset(); });
-  window.addEventListener("mogao:known-words-changed", render);
+  function vocabularyChanged() {
+    dictionaryReady = null;
+    dictionaryLoaded = false;
+    void refreshDictionary();
+  }
+  window.addEventListener("mogao:known-words-changed", vocabularyChanged);
   // Refresh after returning from another page/device; cross-tab changes arrive live.
   window.addEventListener("focus", async () => {
     try {
@@ -93,8 +141,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response.status === 404) { window.location.reload(); return; }
       if (!response.ok) return;
       const state = await response.json();
+      const previousRevision = window.MOGAO_CONFIG?.localKnownRevision;
       vocabulary.setWords(state.words, state.revision, true);
+      // Definitions can finish generating without a vocabulary revision change.
+      if (state.revision === previousRevision) vocabularyChanged();
     } catch {} // Keep the displayed list when temporarily offline.
   });
   render();
+  void refreshDictionary();
 });
