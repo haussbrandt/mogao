@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mogao Known words</title>
+    <title>Known Words - Mogao</title>
     <link rel="stylesheet" href="{{ url_for('static', path='library.css') }}" />
     <link rel="stylesheet" href="{{ url_for('static', path='shared.css') }}?v=13" />
     <link rel="stylesheet" href="{{ url_for('static', path='known_words.css') }}?v=4" />
@@ -16,7 +16,7 @@
         <div class="library-switcher" data-library-switcher>
           <h1>
             <button type="button" class="library-switcher-trigger" aria-expanded="false" aria-controls="library-switcher-menu" data-library-switcher-trigger>
-              Known words <span class="library-switcher-chevron" aria-hidden="true"></span>
+              Known Words <span class="library-switcher-chevron" aria-hidden="true"></span>
             </button>
           </h1>
           {% with current_section="known_words" %}{% include "section_navigation.html" %}{% endwith %}

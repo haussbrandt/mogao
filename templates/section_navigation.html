@@ -4,7 +4,7 @@
   <a href="{{ url_for('video_library_view') }}"{% if current_section == 'video_library' %} aria-current="page"{% endif %}>Videos</a>
   {% endif %}
   {% if anki_enabled %}
-  <a href="/known-words"{% if current_section == 'known_words' %} aria-current="page"{% endif %}>Known words</a>
+  <a href="/known-words"{% if current_section == 'known_words' %} aria-current="page"{% endif %}>Known Words</a>
   {% endif %}
   <a href="/status"{% if current_section == 'status' %} aria-current="page"{% endif %}>Status</a>
 </nav>
