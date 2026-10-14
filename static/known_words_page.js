@@ -91,7 +91,8 @@ document.addEventListener("DOMContentLoaded", () => {
       list.appendChild(row);
     }
     document.getElementById("known-words-count").textContent =
-      query ? `${matching.length} / ${words.length} words` : `${words.length} ${words.length === 1 ? "word" : "words"}`;
+      (query ? `${matching.length} / ${words.length} words` : `${words.length} ${words.length === 1 ? "word" : "words"}`) +
+      " marked as known without a card";
     document.getElementById("known-words-search-status").textContent = !query ? "" :
       searchLoading ? "Loading dictionary…" : searchError ? "Definitions unavailable. Type to retry." : "";
     list.setAttribute("aria-busy", String(!!query && searchLoading));
