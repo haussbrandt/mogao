@@ -139,10 +139,11 @@ function dictionaryResultForWord(word, pinyin = "") {
   const rawEntry = localDict?.[word];
   if (!rawEntry) return null;
 
-  let entries = rawEntry.e.map((entry) => ({
+  const allEntries = rawEntry.e.map((entry) => ({
     pinyin: entry.p,
     definitions: entry.d,
   }));
+  let entries = allEntries;
   const normalizedPinyin = normalizeReferencePinyin(pinyin);
   if (normalizedPinyin) {
     const matchingEntries = entries.filter(
@@ -154,6 +155,7 @@ function dictionaryResultForWord(word, pinyin = "") {
   return {
     word,
     entries,
+    allEntries,
     frequency: formatDictionaryFrequency(rawEntry.f),
     length: word.length,
     llm: !!rawEntry.llm,
@@ -282,7 +284,7 @@ function createDefinitionList(definitions, currentWord, allowPreview = true) {
   return list;
 }
 
-function buildAnkiDefinitionsHtml(word, entry) {
+function buildEntryDefinitionsHtml(word, entry) {
   const list = document.createElement("ul");
 
   for (const definitionValue of entry.definitions) {
@@ -314,6 +316,29 @@ function buildAnkiDefinitionsHtml(word, entry) {
     list.appendChild(item);
   }
   return list.outerHTML;
+}
+
+function buildAnkiDefinitionsHtml(word, entry, allEntries) {
+  const primaryDefinitions = buildEntryDefinitionsHtml(word, entry);
+  const otherEntries = allEntries.filter((otherEntry) => otherEntry !== entry);
+  if (otherEntries.length === 0) return primaryDefinitions;
+
+  const also = document.createElement("div");
+  const label = document.createElement("strong");
+  label.textContent = "Also:";
+  also.appendChild(label);
+
+  for (const otherEntry of otherEntries) {
+    const pinyin = document.createElement("div");
+    pinyin.textContent = otherEntry.pinyin;
+    also.appendChild(pinyin);
+    also.insertAdjacentHTML(
+      "beforeend",
+      buildEntryDefinitionsHtml(word, otherEntry),
+    );
+  }
+
+  return primaryDefinitions + also.outerHTML;
 }
 
 function encodeBase64Utf8(value) {
@@ -389,7 +414,11 @@ function createDictionaryPopupRenderer(container, options = {}) {
         const action = options.createEntryAction?.({
           item,
           entry,
-          definitionsHTML: buildAnkiDefinitionsHtml(item.word, entry),
+          definitionsHTML: buildAnkiDefinitionsHtml(
+            item.word,
+            entry,
+            item.allEntries || item.entries,
+          ),
         });
         if (action) head.appendChild(action);
         resultItem.appendChild(head);
