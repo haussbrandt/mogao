@@ -43,8 +43,10 @@ from core.paths import get_book_path, get_book_progress_path, unique_temp_path
 from core.status import build_status
 from integrations.anki import (
     call_anki_async,
+    delete_suspended_anki_word,
     ensure_anki_available,
     get_anki_word_sets,
+    get_suspended_anki_words,
     validate_anki_configuration,
 )
 from integrations.llm_processor import (
@@ -203,6 +205,7 @@ class NewCardRequest(BaseModel):
     pinyin: str
     sentence: str
     definitions: str
+    replace_suspended: bool = False
 
 
 @app.post("/api/new-card")
@@ -227,6 +230,8 @@ async def create_new_anki_card(data: NewCardRequest):
         },
         "tags": tags,
     }
+    if data.replace_suspended:
+        await delete_suspended_anki_word(data.word)
     await call_anki_async("addNote", note=note)
     if settings.postprocessing.text.enabled or settings.postprocessing.audio.enabled:
         asyncio.create_task(postprocessor.check_and_process())
@@ -521,9 +526,11 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
     prev_idx = chapter_index - 1 if chapter_index > 0 else None
     next_idx = chapter_index + 1 if chapter_index < len(book.spine) - 1 else None
     deck_words = set()
+    suspended_words = set()
     known_words = set()
     if settings.anki.enabled:
         deck_words, known_words = get_anki_word_sets()
+        suspended_words = get_suspended_anki_words()
 
     return templates.TemplateResponse(
         request,
@@ -538,6 +545,7 @@ async def read_chapter(request: Request, book_id: UUID, chapter_index: int):
             "next_idx": next_idx,
             "initial_scroll_percentage": initial_scroll_percentage,
             "deck_words": list(deck_words),
+            "suspended_words": list(suspended_words),
             "known_words": list(known_words),
             "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": {}, "revision": 0},
             "anki_enabled": settings.anki.enabled,

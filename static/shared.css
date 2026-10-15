@@ -117,6 +117,18 @@
   justify-content: center;
   margin-left: auto;
 }
+.anki-btn-suspended {
+  background: #faf2bd;
+  color: #6b621f;
+}
+
+@media (prefers-color-scheme: dark) {
+  .anki-btn-suspended {
+    background: #eee5a5;
+    color: #554d18;
+  }
+}
+
 .anki-btn:active {
   transform: scale(0.95);
 }

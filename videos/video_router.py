@@ -33,7 +33,12 @@ from core.paths import (
     get_video_progress_path,
     unique_temp_path,
 )
-from integrations.anki import call_anki_async, get_anki_word_sets
+from integrations.anki import (
+    call_anki_async,
+    delete_suspended_anki_word,
+    get_anki_word_sets,
+    get_suspended_anki_words,
+)
 from integrations.llm_processor import (
     cancel_video_dictionary_job,
     load_video_dict,
@@ -225,6 +230,7 @@ class NewCardFromVideoRequest(BaseModel):
     pinyin: str
     sentence: str
     definitions: str
+    replace_suspended: bool = False
     start: float
     end: float
 
@@ -269,6 +275,8 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
         "tags": tags,
     }
     try:
+        if data.replace_suspended:
+            await delete_suspended_anki_word(data.word)
         await call_anki_async("addNote", note=note)
         if settings.postprocessing.text.enabled:
             asyncio.create_task(postprocessor.check_and_process())
@@ -1019,9 +1027,11 @@ async def watch_video(request: Request, video_id: UUID):
     seconds_since_start = progress.get("seconds_since_start", 0)
 
     deck_words = set()
+    suspended_words = set()
     known_words = set()
     if settings.anki.enabled:
         deck_words, known_words = get_anki_word_sets()
+        suspended_words = get_suspended_anki_words()
 
     return templates.TemplateResponse(
         request,
@@ -1033,6 +1043,7 @@ async def watch_video(request: Request, video_id: UUID):
             "initial_playback_time": seconds_since_start,
             "has_subtitles": has_subtitles,
             "deck_words": list(deck_words),
+            "suspended_words": list(suspended_words),
             "known_words": list(known_words),
             "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": {}, "revision": 0},
             "anki_enabled": settings.anki.enabled,

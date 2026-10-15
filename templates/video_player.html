@@ -12,7 +12,7 @@
     />
     <link
       rel="stylesheet"
-      href="{{ url_for('static', path='shared.css') }}?v=13"
+      href="{{ url_for('static', path='shared.css') }}?v=16"
     />
     <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=3" />
     <!-- Favicons -->
@@ -122,6 +122,7 @@
       hasSubtitles: {{ has_subtitles | tojson }},
       ankiEnabled: {{ anki_enabled | tojson }},
       deckWords: {{ deck_words | tojson }},
+      suspendedWords: {{ suspended_words | tojson }},
       knownWords: {{ known_words | tojson }},
       localKnownWords: {{ local_vocabulary.words | tojson }},
       localKnownRevision: {{ local_vocabulary.revision | tojson }},
@@ -130,7 +131,7 @@
 
   <script src="{{ url_for('static', path='textprocessor.js') }}?v=3"></script>
   {% if anki_enabled %}
-    <script src="{{ url_for('static', path='anki.js') }}?v=6"></script>
+    <script src="{{ url_for('static', path='anki.js') }}?v=8"></script>
   {% endif %}
   {% if anki_enabled %}
   <link rel="stylesheet" href="{{ url_for('static', path='known_words.css') }}?v=4" />
@@ -138,5 +139,5 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=12"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=6"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=7"></script>
 </html>

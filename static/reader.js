@@ -15,12 +15,10 @@ const dictionaryPopupRenderer = createDictionaryPopupRenderer(popBody, {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "anki-btn";
-    button.disabled = deckWords.has(item.word);
     button.dataset.word = item.word;
     button.dataset.pinyin = entry.pinyin;
     button.dataset.defs = encodeBase64Utf8(definitionsHTML);
-    button.textContent = button.disabled ? "✓" : "+";
-    button.setAttribute("aria-label", `Add ${item.word} to Anki`);
+    window.configureAnkiButton(button, item.word);
     button.addEventListener("click", () => {
       window.addToAnki(button, window.MOGAO_CONFIG.bookId);
     });

@@ -784,6 +784,34 @@ def _validate_anki_known_sources(deck_names: list[str]) -> None:
         )
 
 
+def get_suspended_anki_words() -> set[str]:
+    query = _build_anki_filter_query((settings.anki.deck,), ()) + " is:suspended"
+    return _get_words_from_anki_query(
+        query, settings.anki.fields.word, "suspended cards in the destination deck"
+    )
+
+
+async def delete_suspended_anki_word(word: str) -> None:
+    word_query = _quote_anki_search_value(f"{settings.anki.fields.word}:{word}")
+    query = (
+        _build_anki_filter_query((settings.anki.deck,), ())
+        + f" is:suspended {word_query}"
+    )
+    card_ids = await call_anki_async("findCards", query=query)
+    if not card_ids:
+        return
+    cards = await call_anki_async("cardsInfo", cards=card_ids)
+    note_ids = sorted(
+        {
+            card["note"]
+            for card in cards
+            if card["fields"][settings.anki.fields.word]["value"] == word
+        }
+    )
+    if note_ids:
+        await call_anki_async("deleteNotes", notes=note_ids)
+
+
 def get_anki_word_sets() -> tuple[set[str], set[str]]:
     """Return words in Mogao's destination deck and all words considered known."""
     _get_anki_result("sync", request_timeout=None)
