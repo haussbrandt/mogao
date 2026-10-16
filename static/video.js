@@ -9,6 +9,176 @@ const deckWords = new Set(window.MOGAO_CONFIG.deckWords);
 const progressSaveInterval = 5000;
 let lastProgressSave = 0;
 
+const speedIndicator = document.getElementById("hold-speed-indicator");
+const holdDelay = 250;
+let speedHold = null;
+let completedHoldClick = null;
+
+for (const eventName of ["pointerdown", "touchstart"]) {
+  window.addEventListener(eventName, (event) => {
+    completedHoldClick = null;
+    if (event.touches?.length > 1) finishSpeedHold();
+  }, { capture: true, passive: true });
+}
+
+function finishSpeedHold() {
+  const hold = speedHold;
+  if (!hold) return;
+  speedHold = null;
+  clearTimeout(hold.timer);
+  if (hold.active) {
+    if (video.playbackRate !== hold.previousRate) {
+      video.playbackRate = hold.previousRate;
+    }
+    speedIndicator.hidden = true;
+  }
+  if (hold.pointerId != null && video.hasPointerCapture(hold.pointerId)) {
+    video.releasePointerCapture(hold.pointerId);
+  }
+}
+
+function isSpeedHoldArea(clientY) {
+  // Leave the bottom of the video available for the browser's native controls.
+  return clientY < video.getBoundingClientRect().bottom - 64;
+}
+
+function startSpeedHold(position, identifiers) {
+  const hold = {
+    ...identifiers,
+    x: position.clientX,
+    y: position.clientY,
+    active: false,
+    timer: null,
+  };
+  speedHold = hold;
+  hold.timer = setTimeout(() => {
+    if (speedHold !== hold || video.paused || video.ended) return;
+    hold.previousRate = video.playbackRate;
+    hold.active = true;
+    if (video.playbackRate !== 2) video.playbackRate = 2;
+    speedIndicator.hidden = false;
+  }, holdDelay);
+}
+
+function moveSpeedHold(position) {
+  if (speedHold.active) return;
+  if (Math.hypot(position.clientX - speedHold.x, position.clientY - speedHold.y) > 12) {
+    finishSpeedHold();
+  }
+}
+
+video.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "touch") return;
+  if (speedHold) {
+    finishSpeedHold();
+    return;
+  }
+  if (!event.isPrimary || event.button !== 0 || video.paused || video.ended) return;
+  if (!isSpeedHoldArea(event.clientY)) return;
+
+  event.preventDefault();
+  video.setPointerCapture(event.pointerId);
+  startSpeedHold(event, { pointerId: event.pointerId });
+});
+
+window.addEventListener("pointermove", (event) => {
+  if (!speedHold || event.pointerId !== speedHold.pointerId) return;
+  moveSpeedHold(event);
+});
+
+for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  window.addEventListener(eventName, (event) => {
+    if (event.pointerId !== speedHold?.pointerId) return;
+    if (eventName === "pointerup" && speedHold.active) {
+      completedHoldClick = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+      };
+    }
+    finishSpeedHold();
+  });
+}
+
+video.addEventListener("touchstart", (event) => {
+  if (event.touches.length !== 1) {
+    finishSpeedHold();
+    return;
+  }
+  if (video.paused || video.ended) return;
+  const touch = event.touches[0];
+  if (!isSpeedHoldArea(touch.clientY)) return;
+
+  finishSpeedHold();
+  startSpeedHold(touch, { touchId: touch.identifier });
+}, { passive: true });
+
+window.addEventListener("touchmove", (event) => {
+  if (speedHold?.touchId == null) return;
+  if (event.touches.length !== 1) {
+    finishSpeedHold();
+    return;
+  }
+  const touch = Array.from(event.touches).find(
+    (touch) => touch.identifier === speedHold.touchId,
+  );
+  if (!touch) return;
+  moveSpeedHold(touch);
+}, { passive: true });
+
+window.addEventListener("touchend", (event) => {
+  if (speedHold?.touchId == null) return;
+  const released = Array.from(event.changedTouches).find(
+    (touch) => touch.identifier === speedHold.touchId,
+  );
+  if (!released) return;
+  if (speedHold.active) {
+    if (event.cancelable) {
+      event.preventDefault();
+    } else {
+      completedHoldClick = { x: released.clientX, y: released.clientY };
+    }
+  }
+  finishSpeedHold();
+}, { passive: false });
+
+window.addEventListener("touchcancel", (event) => {
+  if (speedHold?.touchId == null) return;
+  if (Array.from(event.changedTouches).some(
+    (touch) => touch.identifier === speedHold.touchId,
+  )) finishSpeedHold();
+});
+
+video.addEventListener("click", (event) => {
+  const hold = completedHoldClick;
+  completedHoldClick = null;
+  if (
+    hold && event.detail > 0 &&
+    (hold.pointerId == null || event.pointerId == null || event.pointerId === hold.pointerId) &&
+    Math.hypot(event.clientX - hold.x, event.clientY - hold.y) <= 12
+  ) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
+video.addEventListener("contextmenu", (event) => {
+  if (speedHold) {
+    event.preventDefault();
+  }
+});
+video.addEventListener("selectstart", (event) => event.preventDefault());
+for (const eventName of ["pause", "ended", "emptied"]) {
+  video.addEventListener(eventName, finishSpeedHold);
+}
+window.addEventListener("blur", finishSpeedHold);
+window.addEventListener("pagehide", finishSpeedHold);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) finishSpeedHold();
+});
+document.addEventListener("fullscreenchange", finishSpeedHold);
+video.addEventListener("webkitbeginfullscreen", finishSpeedHold);
+video.addEventListener("webkitendfullscreen", finishSpeedHold);
+
 function saveVideoProgress(keepalive = false) {
   if (video.readyState < HTMLMediaElement.HAVE_METADATA) return;
   const secondsSinceStart = video.currentTime;

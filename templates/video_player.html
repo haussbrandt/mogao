@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=16"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=3" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=5" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -91,8 +91,10 @@
         <video
           id="video"
           controls
+          playsinline
           src="{{ video_base_path }}/stream/{{ video_id }}"
         ></video>
+        <div id="hold-speed-indicator" role="status" hidden>2×</div>
         <div id="subtitle-overlay" data-lookup-root></div>
       </div>
       {% if has_subtitles %}
@@ -139,5 +141,5 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=12"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=7"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=12"></script>
 </html>
