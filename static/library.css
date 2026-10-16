@@ -158,22 +158,89 @@ h1 {
 }
 
 .generated-cover {
+  --cover-paper: #f3ecdc;
+  --cover-ink: #303e35;
   width: 100%;
   height: 100%;
-  padding: 28px 18px 22px;
+  position: relative;
+  padding: 28px 24px 24px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-family: "Noto Serif SC", serif;
-  text-align: center;
-  background:
-    linear-gradient(145deg, hsl(var(--cover-hue) 42% 42% / 0.25), transparent 55%),
-    linear-gradient(25deg, hsl(var(--cover-hue) 50% 20%), hsl(var(--cover-hue) 42% 36%));
-  box-shadow:
-    inset 7px 0 12px rgb(0 0 0 / 0.18),
-    inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  color: var(--cover-ink);
+  background: var(--cover-paper);
+  font-family: "Noto Serif SC", "Songti SC", Georgia, serif;
+}
+
+.generated-cover-palette-1 {
+  --cover-paper: #263b4c;
+  --cover-ink: #eee6d6;
+}
+
+.generated-cover-palette-2 {
+  --cover-paper: #713d46;
+  --cover-ink: #f3e5d3;
+}
+
+.generated-cover-palette-3 {
+  --cover-paper: #344c41;
+  --cover-ink: #f0e9d8;
+}
+
+.generated-cover-palette-4 {
+  --cover-paper: #a45f49;
+  --cover-ink: #fff3e0;
+}
+
+.generated-cover-palette-5 {
+  --cover-paper: #505563;
+  --cover-ink: #f0ebdd;
+}
+
+.generated-cover-palette-6 {
+  --cover-paper: #735b2d;
+  --cover-ink: #fff0d2;
+}
+
+.generated-cover-palette-7 {
+  --cover-paper: #53634b;
+  --cover-ink: #f0eedc;
+}
+
+.generated-cover-palette-8 {
+  --cover-paper: #655472;
+  --cover-ink: #f4eaf5;
+}
+
+.generated-cover-palette-9 {
+  --cover-paper: #594237;
+  --cover-ink: #f2e7d8;
+}
+
+.generated-cover-palette-10 {
+  --cover-paper: #2e5c60;
+  --cover-ink: #eee9d9;
+}
+
+.generated-cover-palette-11 {
+  --cover-paper: #58415e;
+  --cover-ink: #f0e4dc;
+}
+
+.generated-cover::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1px solid currentColor;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.generated-cover-accent {
+  width: 24px;
+  height: 4px;
+  flex-shrink: 0;
+  margin-bottom: 24px;
+  background: currentColor;
 }
 
 .generated-cover-title {
@@ -181,25 +248,29 @@ h1 {
   max-width: 100%;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: 1.08rem;
-  font-weight: 700;
-  line-height: 1.3;
+  flex-shrink: 0;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.35;
   text-wrap: balance;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
 }
 
 .generated-cover-author {
+  display: -webkit-box;
   max-width: 100%;
-  margin-top: 18px;
+  margin-top: auto;
+  padding-top: 16px;
   overflow: hidden;
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+  flex-shrink: 0;
+  font-size: 14px;
+  letter-spacing: 0.08em;
   line-height: 1.35;
-  opacity: 0.82;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
+  opacity: 0.75;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .upload-btn.disabled {

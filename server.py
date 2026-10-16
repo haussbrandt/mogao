@@ -290,7 +290,7 @@ async def library_view(request: Request):
                         "character_count": getattr(book, "character_count", 0),
                         "tagged_cards_count": len(tagged_card_ids),
                         "cover_url": cover_url,
-                        "cover_hue": int(UUID(item)) % 360,
+                        "cover_palette": int(UUID(item)) % 12,
                         "processed_at": book.processed_at,
                         "last_read_time": last_read_time,
                     }

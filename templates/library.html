@@ -110,10 +110,10 @@
           </form>
           <div class="book-cover">
             <div
-              class="generated-cover"
-              style="--cover-hue: {{ book.cover_hue }}"
+              class="generated-cover generated-cover-palette-{{ book.cover_palette }}"
               aria-hidden="true"
             >
+              <div class="generated-cover-accent"></div>
               <div class="generated-cover-title">{{ book.title }}</div>
               {% if book.author %}
               <div class="generated-cover-author">{{ book.author }}</div>
