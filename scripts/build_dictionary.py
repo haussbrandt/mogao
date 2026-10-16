@@ -41,6 +41,9 @@ PINYIN_SYLLABLE_RE = re.compile(r"([a-zA-Zü:]+)([1-5])")
 CEDICT_ENTRY_RE = re.compile(
     r"(\S+)\s+(\S+)\s+\[\[?(.*?)\]\]?\s+/(.*)/"
 )
+VARIANT_REFERENCE_RE = re.compile(
+    r"(?:.*\s)?variant of\s+([^\s\[\]]+)\[([^\]]+)\]", re.IGNORECASE
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -387,16 +390,38 @@ def combine_frequency_ranks(
     return combined_ranks
 
 
+def is_self_variant(word: str, pinyin: str, definition: str) -> bool:
+    """Recognize a variant sense made redundant by simplified-form merging."""
+    match = VARIANT_REFERENCE_RE.fullmatch(definition.strip())
+    if not match:
+        return False
+    written_form, reference_pinyin = match.groups()
+    return (
+        written_form.split("|")[-1] == word
+        and convert_pinyin_tone(reference_pinyin).casefold()
+        == convert_pinyin_tone(pinyin).casefold()
+    )
+
+
 def build_output(
     dictionary: dict[str, list[dict[str, object]]],
     frequencies: dict[str, int],
 ) -> dict[str, dict[str, object]]:
     output: dict[str, dict[str, object]] = {}
     for word, entries in dictionary.items():
-        compact_entries = [
-            {"p": entry["pinyin"], "d": entry["definitions"]}
-            for entry in entries
-        ]
+        compact_entries = []
+        for entry in entries:
+            # Traditional variants can simplify to the standard headword itself.
+            # Remove only the redundant sense, keeping all other definitions.
+            definitions = [
+                definition
+                for definition in entry["definitions"]
+                if not is_self_variant(word, entry["pinyin"], definition)
+            ]
+            if definitions:
+                compact_entries.append({"p": entry["pinyin"], "d": definitions})
+        if not compact_entries:
+            continue
         output[word] = {"e": compact_entries, "f": frequencies.get(word)}
     return output
 

@@ -27,7 +27,7 @@ const CEDICT_REFERENCE_PATTERN =
 
 function loadDictionary() {
   if (window.dictionaryReady) return window.dictionaryReady;
-  window.dictionaryReady = fetch("/static/dict.json?v=3")
+  window.dictionaryReady = fetch("/static/dict.json?v=4")
     .then((r) => {
       if (!r.ok) throw new Error("Could not load dictionary.");
       return r.json();
