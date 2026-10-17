@@ -1,6 +1,9 @@
 import asyncio
 import json
 import logging
+import math
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import requests
@@ -40,9 +43,19 @@ def _retry_delay(response: requests.Response | None, attempt: int) -> float:
         retry_after = response.headers.get("Retry-After")
         if retry_after:
             try:
-                return min(float(retry_after), MAX_RETRY_DELAY_SECONDS)
+                delay = float(retry_after)
             except ValueError:
-                pass
+                try:
+                    retry_at = parsedate_to_datetime(retry_after)
+                    if retry_at.tzinfo is None:
+                        retry_at = retry_at.replace(tzinfo=timezone.utc)
+                    delay = (retry_at - datetime.now(timezone.utc)).total_seconds()
+                except (TypeError, ValueError, OverflowError):
+                    delay = math.nan
+                else:
+                    delay = max(0.0, delay)
+            if math.isfinite(delay) and delay >= 0:
+                return delay
     return min(
         INITIAL_RETRY_DELAY_SECONDS * (2**attempt),
         MAX_RETRY_DELAY_SECONDS,
