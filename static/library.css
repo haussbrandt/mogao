@@ -18,6 +18,7 @@ body {
 .header-row {
   display: flex;
   align-items: center;
+  line-height: normal;
   border-bottom: 2px solid var(--border);
   padding-bottom: 10px;
   margin-bottom: 30px;
