@@ -19,6 +19,11 @@
   bottom: 0;
 }
 
+#def-popup.popup-dragging,
+#coverage-lookup.popup-dragging {
+  transition: none;
+}
+
 .popup-header {
   padding: 10px 15px;
   border-bottom: 1px solid var(--border);
@@ -26,6 +31,8 @@
   justify-content: space-between;
   align-items: center;
   background: var(--bg-subtle);
+  touch-action: none;
+  user-select: none;
 }
 .popup-title {
   font-weight: bold;

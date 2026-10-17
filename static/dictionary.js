@@ -2,6 +2,66 @@ let localDict = null;
 const generatedWords = new Set();
 
 document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("#def-popup, #coverage-lookup").forEach((popup) => {
+    const header = popup.querySelector(".popup-header");
+    const closeButton = header?.querySelector(".close-btn");
+    if (!closeButton) return;
+
+    let drag = null;
+    let animation = null;
+    const reset = () => {
+      const pointerId = drag?.pointerId;
+      drag = null;
+      if (pointerId !== undefined && header.hasPointerCapture(pointerId)) {
+        header.releasePointerCapture(pointerId);
+      }
+      animation?.cancel();
+      animation = null;
+      popup.style.removeProperty("transform");
+      // Apply the closed position before restoring the popup's transition.
+      popup.getBoundingClientRect();
+      popup.classList.remove("popup-dragging");
+    };
+
+    header.addEventListener("pointerdown", (event) => {
+      if (!event.isPrimary || event.button !== 0 || drag || animation ||
+          event.target.closest("button")) return;
+      drag = { pointerId: event.pointerId, startY: event.clientY, distance: 0 };
+      popup.classList.add("popup-dragging");
+      header.setPointerCapture(event.pointerId);
+    });
+    header.addEventListener("pointermove", (event) => {
+      if (event.pointerId !== drag?.pointerId) return;
+      drag.distance = Math.max(0, event.clientY - drag.startY);
+      popup.style.transform = `translateY(${drag.distance}px)`;
+    });
+    const finish = (event) => {
+      if (event.pointerId !== drag?.pointerId) return;
+      const distance = event.type === "pointerup"
+        ? Math.max(0, event.clientY - drag.startY) : drag.distance;
+      const height = popup.getBoundingClientRect().height;
+      const dismiss = event.type === "pointerup" &&
+        distance >= Math.min(80, height * 0.18);
+      const pointerId = drag.pointerId;
+      drag = null;
+      if (header.hasPointerCapture(pointerId)) header.releasePointerCapture(pointerId);
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      animation = popup.animate([
+        { transform: `translateY(${distance}px)` },
+        { transform: `translateY(${dismiss ? height + 24 : 0}px)` },
+      ], { duration: reduceMotion ? 0 : 180, easing: "ease-out", fill: "forwards" });
+      animation.onfinish = () => {
+        if (dismiss) closeButton.click();
+        reset();
+      };
+    };
+    header.addEventListener("pointerup", finish);
+    header.addEventListener("pointercancel", finish);
+    header.addEventListener("lostpointercapture", finish);
+    closeButton.addEventListener("click", () => queueMicrotask(reset));
+    popup.addEventListener("close", reset);
+  });
+
   const dialog = document.getElementById("coverage-lookup");
   if (!dialog) return;
   let startedOutside = false;
