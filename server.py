@@ -34,8 +34,7 @@ from books.library import (
     save_settings,
 )
 from core.config import settings
-from core.coverage import refresh_coverage
-from core.coverage_router import router as coverage_router
+from core.coverage import manage_coverage_jobs, refresh_coverage, router as coverage_router
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
 from core.known_words import load_local_vocabulary, router as known_words_router
@@ -151,7 +150,8 @@ async def lifespan(app: FastAPI):
     # Uvicorn drains background jobs before lifespan teardown, so their detached
     # processes must also be stopped directly when a shutdown signal arrives.
     with manage_media_processes():
-        yield
+        async with manage_coverage_jobs():
+            yield
 
 
 app = FastAPI(lifespan=lifespan)

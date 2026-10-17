@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let localRevision = null;
   let libraryReady = Promise.resolve();
   let libraryRequest = 0;
+  let libraryItems = {};
   let analysisPoll = null;
   const cacheKey = `mogao:coverage:${kind}`;
   let showAll = false;
@@ -268,6 +269,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!window.LocalVocabulary.setWords(result.local_words, result.local_revision))
       return;
     localRevision = result.local_revision;
+    const selectedId = selectedButton?.dataset.coverageId;
+    const analysisFinished = libraryItems[selectedId]?.status === "analysing" &&
+      result.items[selectedId] && result.items[selectedId].status !== "analysing";
+    libraryItems = result.items;
     showScores(result.items);
     try {
       sessionStorage.setItem(cacheKey, JSON.stringify(result.items));
@@ -275,6 +280,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (changed) {
       details.clear();
       if (dialog.open) void loadDetail(true);
+    } else if (dialog.open && !data && analysisFinished) {
+      void loadDetail(true);
     }
     if (Object.values(result.items).some((score) => score.status === "analysing")) {
       analysisPoll = setTimeout(() => loadLibrary().catch(() => {}), 1500);
