@@ -13,7 +13,10 @@ from books.library import load_book_cached
 from core.config import PROJECT_ROOT, settings
 from core.logging_config import get_recent_issues
 from core.paths import TEMP_DIRECTORY, get_book_dict_path, get_video_dict_path
-from integrations.anki import get_pending_postprocessing_card_count
+from integrations.anki import (
+    get_mogao_card_count,
+    get_pending_postprocessing_card_count,
+)
 from integrations.llm_processor import load_book_dict, load_video_dict
 from videos.video_library import load_video_cached
 
@@ -376,6 +379,13 @@ def _postprocessing_status(postprocessor) -> dict:
 
 
 def build_status(postprocessor, video_processing_jobs: dict) -> dict:
+    card_count = None
+    if settings.anki.enabled:
+        try:
+            card_count = get_mogao_card_count()
+        except RuntimeError:
+            pass
+
     books, videos = _content_inventory()
     dictionaries = _dictionary_status(books, videos)
     postprocessing = _postprocessing_status(postprocessor)
@@ -448,5 +458,7 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
             "book_count": len(books),
             "video_count": len(videos),
             "video_enabled": settings.video.enabled,
+            "anki_enabled": settings.anki.enabled,
+            "card_count": card_count,
         },
     }

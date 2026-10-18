@@ -195,6 +195,9 @@
       {% if status.server.video_enabled %}
       <div><dt>Videos</dt><dd>{{ status.server.video_count }}</dd></div>
       {% endif %}
+      {% if status.server.anki_enabled %}
+      <div><dt>Flashcards</dt><dd>{{ status.server.card_count if status.server.card_count is not none else 'Unavailable' }}</dd></div>
+      {% endif %}
     </dl>
     {% if status.server.version_warning %}
     <p class="status-warning">{{ status.server.version_warning }}</p>

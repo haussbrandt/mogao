@@ -471,6 +471,10 @@ def _get_card_ids_for_tags(tags: tuple[str, ...]) -> frozenset[int]:
     return frozenset(card_ids)
 
 
+def get_mogao_card_count() -> int:
+    return len(_get_card_ids_for_tags((settings.anki.tags.app,)))
+
+
 def get_pending_postprocessing_card_count() -> int:
     tags = []
     if settings.postprocessing.text.enabled:
