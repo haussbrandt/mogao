@@ -1011,6 +1011,28 @@ async def save_video_progress_api(data: VideoProgressRequest):
     return {"status": "ok"}
 
 
+@router.get("/watch/latest", response_class=HTMLResponse)
+async def redirect_to_latest_video():
+    """Resume the video with the most recently saved watch progress."""
+    candidates = []
+    if settings.paths.video_library.is_dir():
+        for item in os.listdir(settings.paths.video_library):
+            try:
+                progress_path = get_video_progress_path(item)
+                if progress_path.is_file():
+                    candidates.append((progress_path.stat().st_mtime_ns, item))
+            except (ValueError, OSError):
+                continue
+
+    for _, video_id in sorted(candidates, reverse=True):
+        if load_video_cached(video_id):
+            return RedirectResponse(
+                url=f"{VIDEO_BASE_PATH}/watch/{video_id}", status_code=303
+            )
+
+    return RedirectResponse(url=f"{VIDEO_BASE_PATH}/", status_code=303)
+
+
 @router.get("/watch/{video_id}", response_class=HTMLResponse)
 async def watch_video(request: Request, video_id: UUID):
     """The main video player interface."""
