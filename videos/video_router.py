@@ -16,7 +16,7 @@ import urllib.parse
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
@@ -1064,6 +1064,8 @@ async def watch_video(request: Request, video_id: UUID):
             "video_id": video_id_string,
             "initial_playback_time": seconds_since_start,
             "has_subtitles": has_subtitles,
+            "transcript_mode": has_subtitles
+            and load_video_settings().get("subtitle_mode") == "transcript",
             "deck_words": list(deck_words),
             "suspended_words": list(suspended_words),
             "known_words": list(known_words),
@@ -1102,6 +1104,18 @@ async def get_video_dict_api(video_id: UUID):
 
 class SaveVideoSortRequest(BaseModel):
     sort_order: str
+
+
+class SaveVideoSubtitleModeRequest(BaseModel):
+    subtitle_mode: Literal["subtitles", "transcript"]
+
+
+@router.post("/api/save-subtitle-mode")
+async def save_video_subtitle_mode_api(data: SaveVideoSubtitleModeRequest):
+    current_settings = load_video_settings()
+    current_settings["subtitle_mode"] = data.subtitle_mode
+    save_video_settings(current_settings)
+    return {"status": "ok"}
 
 
 @router.post("/api/save-sort")

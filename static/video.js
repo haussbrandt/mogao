@@ -436,8 +436,28 @@ function setTranscriptMode(enabled) {
   if (enabled) updateActiveTranscriptLine(lastSubIndex);
 }
 
+let subtitleModeSave = Promise.resolve();
 modeToggle?.addEventListener("click", () => {
-  setTranscriptMode(transcriptPanel.hidden);
+  const enabled = transcriptPanel.hidden;
+  setTranscriptMode(enabled);
+  // Save in click order so a slower request cannot overwrite the latest choice.
+  subtitleModeSave = subtitleModeSave.then(async () => {
+    const response = await fetch(
+      `${window.MOGAO_CONFIG.videoBasePath}/api/save-subtitle-mode`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Mogao-Request": "1",
+        },
+        body: JSON.stringify({ subtitle_mode: enabled ? "transcript" : "subtitles" }),
+        keepalive: true,
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+  }).catch((error) => console.error("Could not save subtitle mode", error));
 });
 
 const subtitleMenu = document.getElementById("subtitle-menu-container");

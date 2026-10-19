@@ -54,10 +54,10 @@
           id="subtitle-mode-toggle"
           class="subtitle-action"
           type="button"
-          aria-pressed="false"
+          aria-pressed="{{ 'true' if transcript_mode else 'false' }}"
           aria-controls="transcript-panel"
         >
-          Transcript
+          {{ 'Subtitles' if transcript_mode else 'Transcript' }}
         </button>
         <details id="subtitle-menu-container">
           <summary
@@ -95,10 +95,10 @@
           src="{{ video_base_path }}/stream/{{ video_id }}"
         ></video>
         <div id="hold-speed-indicator" role="status" hidden>2×</div>
-        <div id="subtitle-overlay" data-lookup-root></div>
+        <div id="subtitle-overlay" data-lookup-root{% if transcript_mode %} hidden{% endif %}></div>
       </div>
       {% if has_subtitles %}
-      <aside id="transcript-panel" aria-label="Video transcript" hidden>
+      <aside id="transcript-panel" aria-label="Video transcript"{% if not transcript_mode %} hidden{% endif %}>
         <div id="transcript-header">Transcript</div>
         <div id="transcript-lines"></div>
       </aside>
@@ -141,5 +141,5 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=12"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=13"></script>
 </html>
