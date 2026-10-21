@@ -14,7 +14,6 @@ load_dotenv()
 configure_logging()
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -34,6 +33,7 @@ from books.library import (
     save_settings,
 )
 from core.config import settings
+from core.compression import MediaSafeGZipMiddleware
 from core.coverage import manage_coverage_jobs, refresh_coverage, router as coverage_router
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
@@ -155,7 +155,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(MediaSafeGZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
 app.include_router(coverage_router)
 app.include_router(known_words_router)

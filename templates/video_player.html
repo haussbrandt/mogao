@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=17"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=6" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v={{ playback_asset_version }}" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -90,11 +90,47 @@
       <div id="player-container">
         <video
           id="video"
-          controls
           playsinline
-          src="{{ video_base_path }}/stream/{{ video_id }}"
+          muted
+          disableremoteplayback
         ></video>
         <div id="hold-speed-indicator" role="status" hidden>2×</div>
+        <div id="playback-status" role="status">
+          <span class="playback-spinner" aria-hidden="true"></span>
+          <span class="playback-message">Loading video…</span>
+        </div>
+        <div id="precise-controls" role="group" aria-label="Video controls">
+          <div class="playback-timeline">
+            <input id="precise-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Playback position" disabled>
+            <span id="precise-time">0:00 / 0:00</span>
+          </div>
+          <div class="playback-actions">
+            <button id="precise-play" type="button" aria-label="Play" title="Play" data-playing="false" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path class="play-icon" d="M8 5v14l11-7z" fill="currentColor" stroke="none"/><path class="pause-icon" d="M8 5v14M16 5v14" stroke-width="4"/></svg>
+            </button>
+            <button id="precise-backward" type="button" aria-label="Back 10 seconds" title="Back 10 seconds" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h-4v-4M3 7a10 10 0 1 1-1 10"/><text x="12" y="15" text-anchor="middle">10</text></svg>
+            </button>
+            <button id="precise-forward" type="button" aria-label="Forward 10 seconds" title="Forward 10 seconds" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7h4v-4M21 7a10 10 0 1 0 1 10"/><text x="12" y="15" text-anchor="middle">10</text></svg>
+            </button>
+            <div class="playback-volume">
+              <button id="precise-mute" type="button" aria-label="Mute" title="Mute" data-muted="false" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="volume-waves" d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/><path class="volume-muted" d="m16 9 6 6m0-6-6 6"/></svg>
+              </button>
+              <input id="precise-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" disabled>
+            </div>
+            <select id="precise-rate" aria-label="Playback speed" title="Playback speed" disabled>
+              {% for rate in ['0.5', '0.75', '1', '1.25', '1.5', '1.75', '2'] %}
+              <option value="{{ rate }}"{% if rate == '1' %} selected{% endif %}>{{ rate }}×</option>
+              {% endfor %}
+            </select>
+            <button id="precise-fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>
+            </button>
+          </div>
+          <button id="precise-retry" type="button" hidden>Retry</button>
+        </div>
         <div id="subtitle-overlay" data-lookup-root{% if transcript_mode %} hidden{% endif %}></div>
       </div>
       {% if has_subtitles %}
@@ -141,5 +177,6 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=13"></script>
+  <script src="{{ url_for('static', path='precise_playback.js') }}?v={{ playback_asset_version }}"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v={{ playback_asset_version }}"></script>
 </html>

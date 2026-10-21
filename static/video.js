@@ -1,4 +1,5 @@
 const video = document.getElementById("video");
+const playback = window.createVideoPlayback(video, window.MOGAO_CONFIG);
 const overlay = document.getElementById("subtitle-overlay");
 const popup = document.getElementById("def-popup");
 const popBody = document.getElementById("pop-body");
@@ -27,8 +28,8 @@ function finishSpeedHold() {
   speedHold = null;
   clearTimeout(hold.timer);
   if (hold.active) {
-    if (video.playbackRate !== hold.previousRate) {
-      video.playbackRate = hold.previousRate;
+    if (playback.playbackRate !== hold.previousRate) {
+      playback.playbackRate = hold.previousRate;
     }
     speedIndicator.hidden = true;
   }
@@ -53,9 +54,9 @@ function startSpeedHold(position, identifiers) {
   speedHold = hold;
   hold.timer = setTimeout(() => {
     if (speedHold !== hold || video.paused || video.ended) return;
-    hold.previousRate = video.playbackRate;
+    hold.previousRate = playback.playbackRate;
     hold.active = true;
-    if (video.playbackRate !== 2) video.playbackRate = 2;
+    if (playback.playbackRate !== 2) playback.playbackRate = 2;
     speedIndicator.hidden = false;
   }, holdDelay);
 }
@@ -168,7 +169,10 @@ video.addEventListener("contextmenu", (event) => {
 });
 video.addEventListener("selectstart", (event) => event.preventDefault());
 for (const eventName of ["pause", "ended", "emptied"]) {
-  video.addEventListener(eventName, finishSpeedHold);
+  video.addEventListener(eventName, () => {
+    if (eventName === "pause" && playback.wanted) return;
+    finishSpeedHold();
+  });
 }
 window.addEventListener("blur", finishSpeedHold);
 window.addEventListener("pagehide", finishSpeedHold);
@@ -180,8 +184,8 @@ video.addEventListener("webkitbeginfullscreen", finishSpeedHold);
 video.addEventListener("webkitendfullscreen", finishSpeedHold);
 
 function saveVideoProgress(keepalive = false) {
-  if (video.readyState < HTMLMediaElement.HAVE_METADATA) return;
-  const secondsSinceStart = video.currentTime;
+  if (!playback.initialized) return;
+  const secondsSinceStart = playback.currentTime;
   if (!Number.isFinite(secondsSinceStart)) return;
 
   lastProgressSave = Date.now();
@@ -196,27 +200,10 @@ function saveVideoProgress(keepalive = false) {
   }).catch((error) => console.error("Failed to save video progress:", error));
 }
 
-function restoreVideoProgress() {
-  const savedTime = Number(window.MOGAO_CONFIG.initialPlaybackTime);
-  if (!Number.isFinite(savedTime) || savedTime <= 0) return;
-  video.currentTime = Number.isFinite(video.duration)
-    ? Math.min(savedTime, video.duration)
-    : savedTime;
-}
-
-if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
-  restoreVideoProgress();
-  saveVideoProgress();
-} else {
-  video.addEventListener(
-    "loadedmetadata",
-    () => {
-      restoreVideoProgress();
-      saveVideoProgress();
-    },
-    { once: true },
-  );
-}
+// The playback controller restores the configured position after MSE is ready.
+// loadedmetadata can report a temporary duration of zero on Safari; clamping
+// the saved position there overwrote it before the first fragment was loaded.
+playback.ready.then(() => saveVideoProgress()).catch(() => {});
 
 video.addEventListener("timeupdate", () => {
   if (Date.now() - lastProgressSave >= progressSaveInterval) {
@@ -246,8 +233,8 @@ const dictionaryPopupRenderer = createDictionaryPopupRenderer(popBody, {
     button.dataset.segmentedsubs = JSON.stringify(
       segmentedSubs[selectedSubIndex] ?? {
         text: currentSentence,
-        start: video.currentTime,
-        end: video.currentTime,
+        start: playback.currentTime,
+        end: playback.currentTime,
       },
     );
     window.configureAnkiButton(button, item.word);
@@ -362,7 +349,7 @@ function updateActiveTranscriptLine(idx) {
 let lastSubIndex = -1;
 
 function updateSubtitle() {
-  const t = video.currentTime;
+  const t = playback.currentTime;
   const idx = segmentedSubs.findIndex((s) => t >= s.start && t <= s.end);
   if (idx === lastSubIndex) return;
   lastSubIndex = idx;
@@ -522,14 +509,14 @@ transcriptLines?.addEventListener("click", (e) => {
   const time = e.target.closest(".transcript-time");
   if (!time) return;
   const line = time.closest(".transcript-line");
-  video.currentTime = segmentedSubs[Number(line.dataset.subIndex)].start;
-  video.play();
+  playback.currentTime = segmentedSubs[Number(line.dataset.subIndex)].start;
+  playback.play();
 });
 
 function lookupSubtitle(e) {
   const subtitleText = e.target.closest(".subtitle-text, .transcript-text");
   if (!subtitleText || !localDict) return;
-  video.pause();
+  playback.pause();
   const transcriptLine = subtitleText.closest(".transcript-line");
   selectedSubIndex = transcriptLine
     ? Number(transcriptLine.dataset.subIndex)
