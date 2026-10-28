@@ -87,7 +87,7 @@
       </div>
     </div>
     <div id="player-layout">
-      <div id="player-container">
+      <div id="player-container" class="precise-playback">
         <video
           id="video"
           playsinline
@@ -120,11 +120,7 @@
               </button>
               <input id="precise-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" disabled>
             </div>
-            <select id="precise-rate" aria-label="Playback speed" title="Playback speed" disabled>
-              {% for rate in ['0.5', '0.75', '1', '1.25', '1.5', '1.75', '2'] %}
-              <option value="{{ rate }}"{% if rate == '1' %} selected{% endif %}>{{ rate }}×</option>
-              {% endfor %}
-            </select>
+            <select id="precise-rate" aria-label="Playback speed" title="Playback speed" disabled></select>
             <button id="precise-fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>
             </button>

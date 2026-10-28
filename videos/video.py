@@ -10,6 +10,7 @@ import tempfile
 import threading
 import uuid
 from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from fractions import Fraction
@@ -142,6 +143,53 @@ def run_media_command(
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     result.check_returncode()
     return result
+
+
+def stream_media_command(
+    command: list[str | os.PathLike[str]], on_line: Callable[[str], None], *, timeout: float
+) -> None:
+    """Consume stdout incrementally, with the same shutdown/timeout ownership."""
+    with tempfile.TemporaryFile(mode="w+t") as errors:
+        with _media_process_lock:
+            if _media_shutdown:
+                raise RuntimeError("Media processing is shutting down")
+            process = subprocess.Popen(
+                command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=errors, text=True, errors="replace",
+                start_new_session=os.name == "posix",
+            )
+            _media_processes.add(process)
+            if _media_shutdown:
+                _kill_media_process(process)
+        expired = threading.Event()
+
+        def expire():
+            expired.set()
+            _kill_media_process(process)
+
+        timer = threading.Timer(timeout, expire)
+        timer.daemon = True
+        try:
+            timer.start()
+            for line in process.stdout:
+                on_line(line)
+            process.wait()
+            timer.cancel()
+            timer.join()
+            if expired.is_set():
+                raise subprocess.TimeoutExpired(command, timeout)
+            if process.returncode:
+                errors.seek(0)
+                raise subprocess.CalledProcessError(process.returncode, command, stderr=errors.read(65536))
+        finally:
+            timer.cancel()
+            timer.join()
+            if process.poll() is None:
+                _kill_media_process(process)
+            process.wait()
+            process.stdout.close()
+            with _media_process_lock:
+                _media_processes.discard(process)
 
 
 def probe_video_codec(path: str | os.PathLike[str]) -> str:

@@ -1081,16 +1081,6 @@ async def watch_video(request: Request, video_id: UUID):
     )
 
 
-@router.get("/stream/{video_id}")
-def stream_video(video_id: UUID):
-    video_path = get_video_path(video_id, "video.mp4")
-
-    if os.path.exists(video_path):
-        return FileResponse(video_path, media_type="video/mp4")
-    else:
-        raise HTTPException(status_code=404, detail="video not found")
-
-
 @router.get("/{video_id}/subtitles")
 def get_subtitles(video_id: UUID):
     subtitle_path = get_video_path(video_id, "subtitles.srt")

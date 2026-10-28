@@ -14,6 +14,7 @@ load_dotenv()
 configure_logging()
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -33,7 +34,7 @@ from books.library import (
     save_settings,
 )
 from core.config import settings
-from core.compression import MediaSafeGZipMiddleware
+from videos.playback_audio import manage_audio_streams
 from core.coverage import manage_coverage_jobs, refresh_coverage, router as coverage_router
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware
@@ -149,13 +150,13 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(video_router.cleanup_processing_jobs())
     # Uvicorn drains background jobs before lifespan teardown, so their detached
     # processes must also be stopped directly when a shutdown signal arrives.
-    with manage_media_processes():
+    with manage_media_processes(), manage_audio_streams():
         async with manage_coverage_jobs():
             yield
 
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(MediaSafeGZipMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(AuthMiddleware)
 app.include_router(coverage_router)
 app.include_router(known_words_router)
