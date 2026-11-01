@@ -2,13 +2,18 @@
 
 import collections
 import contextlib
+import gzip
+import hashlib
+import json
+import os
 import subprocess
+import tempfile
 import threading
 import time
 from weakref import WeakValueDictionary
 
 from fastapi import HTTPException
-from videos import playback_audio_cache as replay
+from core.paths import named_temp_path
 
 SAMPLE_RATE = 48_000
 CHANNELS = 2
@@ -21,6 +26,80 @@ _lock = threading.RLock()
 _streams = {}
 _session_locks = WeakValueDictionary()
 _generations = {}
+
+
+REPLAY_CACHE_BYTES = 128 * 1024**2
+REPLAY_MAX_FILES = 2048
+REPLAY_MAX_CHUNK_BYTES = 8 * 48000 * 4 * 2  # Eight source seconds at minimum speed 0.5x.
+_replay_lock = threading.Lock()
+
+
+def _replay_root():
+    root = named_temp_path("playback-audio-chunks-v1")
+    root.mkdir(mode=0o700, exist_ok=True)
+    return root
+
+
+def _replay_path(identity, chunk):
+    source, version, _generation, origin, rate = identity
+    # Generation/session do not alter samples; source version, tempo and filter
+    # origin do. Never splice cached chunks from different tempo-filter runs.
+    key = json.dumps([source, version, origin, format(rate, "g"), chunk]).encode()
+    return _replay_root() / (hashlib.sha256(key).hexdigest() + ".gz")
+
+
+def _read_replay(identity, chunk):
+    path = _replay_path(identity, chunk)
+    with _replay_lock:
+        try:
+            file = path.open("rb")
+        except FileNotFoundError:
+            return None
+        os.utime(file.fileno(), None)
+    try:
+        with file, gzip.GzipFile(fileobj=file) as compressed:
+            data = compressed.read(REPLAY_MAX_CHUNK_BYTES + 1)
+        if len(data) > REPLAY_MAX_CHUNK_BYTES:
+            raise ValueError("Oversized cached chunk")
+        return data
+    except (OSError, EOFError, ValueError):
+        with _replay_lock:
+            path.unlink(missing_ok=True)
+        return None
+
+
+def _write_replay(identity, chunk, data):
+    if len(data) > REPLAY_MAX_CHUNK_BYTES:
+        raise ValueError("Oversized PCM chunk")
+    path = _replay_path(identity, chunk)
+    encoded = gzip.compress(data, compresslevel=1, mtime=0)
+    with _replay_lock:
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as file:
+            temporary = path.parent / os.path.basename(file.name)
+            file.write(encoded)
+        try:
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        entries = []
+        for candidate in path.parent.glob("*.gz"):
+            try:
+                entries.append((candidate, candidate.stat()))
+            except FileNotFoundError:
+                pass
+        total = sum(stat.st_size for _, stat in entries)
+        count = len(entries)
+        for candidate, stat in sorted(entries, key=lambda item: item[1].st_mtime):
+            if total <= REPLAY_CACHE_BYTES and count <= REPLAY_MAX_FILES:
+                break
+            try:
+                candidate.unlink()
+            except FileNotFoundError:
+                pass
+            except PermissionError:
+                continue  # An open response may temporarily pin a file on Windows.
+            total -= stat.st_size
+            count -= 1
 
 
 def expired_window():
@@ -59,7 +138,7 @@ class AudioStream:
         # Forward chunks must still advance the continuous decoder. Replaying
         # older chunks, however, must not rewind or replace that live process.
         if chunk < self.next:
-            cached = replay.read(self.identity, chunk)
+            cached = _read_replay(self.identity, chunk)
             if cached is not None:
                 return cached
         if chunk < self.next or chunk > self.next + 3:
@@ -87,7 +166,7 @@ class AudioStream:
                         raise HTTPException(503, "Could not decode audio. Please retry.")
                     data.extend(part)
                 self.history[self.next] = bytes(data)
-                replay.write(self.identity, self.next, self.history[self.next])
+                _write_replay(self.identity, self.next, self.history[self.next])
                 self.next += 1
                 while len(self.history) > HISTORY_CHUNKS:
                     self.history.popitem(last=False)
@@ -132,7 +211,7 @@ def _read_chunk(session, source, version, generation, origin, rate, duration, ch
     # Reuse disk chunks even after the decoder has expired. No process slot or
     # replay from the beginning of a long file is needed for a cache hit.
     if stream is None:
-        cached = replay.read(identity, chunk)
+        cached = _read_replay(identity, chunk)
         if cached is not None and chunk > origin + 3:
             return cached
         if chunk > origin + 3:

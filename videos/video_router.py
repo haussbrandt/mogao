@@ -45,7 +45,7 @@ from integrations.llm_processor import (
     schedule_video_dictionary_job,
 )
 from videos.video import Video, cut_audio, generate_video, run_media_command, take_screenshot
-from videos.precise_playback import router as precise_playback_router, remove_video_cache
+from videos.playback import router as playback_router, remove_video_cache
 from videos.video_library import (
     load_video_cached,
     load_video_progress,
@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 VIDEO_BASE_PATH = "/video"
 
 router = APIRouter(prefix=VIDEO_BASE_PATH)
-router.include_router(precise_playback_router)
+router.include_router(playback_router)
 
 ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm")
 ALLOWED_SUBTITLE_EXTENSIONS = (".srt",)

@@ -27,10 +27,10 @@
     });
   }
 
-  class PrecisePlayback {
+  class VideoPlayback {
     constructor(video, config) {
       this.video = video;
-      this.base = `${config.videoBasePath}/stream/precise/${config.videoId}`;
+      this.base = `${config.videoBasePath}/stream/playback/${config.videoId}`;
       this.pendingTime = Math.max(0, Number(config.initialPlaybackTime) || 0);
       this.seekPending = true;
       this.rate = 1;
@@ -47,7 +47,7 @@
       this.sources = [];
       this.bufferQueue = Promise.resolve();
       this.status = document.getElementById("playback-status");
-      this.controls = document.getElementById("precise-controls");
+      this.controls = document.getElementById("playback-controls");
       this.installControls();
       this.ready = this.initialize();
       this.ready.catch(error => this.fail(error));
@@ -150,13 +150,13 @@
         this.holdingVideo = position >= this.manifest.videoDuration;
         this.seekPending = false;
       }
-      document.getElementById("precise-rate").replaceChildren(
+      document.getElementById("playback-rate").replaceChildren(
         ...this.manifest.rates.map(rate => new Option(`${rate}×`, String(rate), rate === 1, rate === this.rate)));
       this.setStatus(""); this.controls.querySelectorAll("input,button,select").forEach(control => { control.disabled = false; });
-      document.getElementById("precise-seek").max = String(this.manifest.duration);
-      document.getElementById("precise-volume").disabled = !this.manifest.audio;
-      document.getElementById("precise-mute").disabled = !this.manifest.audio;
-      document.getElementById("precise-fullscreen").disabled = !document.body.requestFullscreen;
+      document.getElementById("playback-seek").max = String(this.manifest.duration);
+      document.getElementById("playback-volume").disabled = !this.manifest.audio;
+      document.getElementById("playback-mute").disabled = !this.manifest.audio;
+      document.getElementById("playback-fullscreen").disabled = !document.body.requestFullscreen;
       this.initialized = true;
       this.updateControls();
       this.prefetch();
@@ -381,7 +381,7 @@
     }
 
     play() {
-      document.getElementById("precise-retry").hidden = true;
+      document.getElementById("playback-retry").hidden = true;
       this.wanted = true;
       if (this.manifest && (this.currentTime >= this.manifest.duration || (this.pausedAt != null && performance.now() - this.pausedAt > 30000))) {
         this.resetAudio(this.currentTime >= this.manifest.duration ? 0 : this.currentTime);
@@ -711,7 +711,7 @@
       this.pause();
       if (this.manifest) this.resetAudio(this.currentTime);
       this.setStatus(error.message || "Playback failed. Please retry.", true);
-      document.getElementById("precise-retry").hidden = false;
+      document.getElementById("playback-retry").hidden = false;
     }
     formatTime(time) {
       const seconds = Math.max(0, Math.floor(time || 0));
@@ -724,24 +724,24 @@
       input.style.setProperty("--range-progress", `${fraction * 100}%`);
     }
     updateControls() {
-      const play = document.getElementById("precise-play");
+      const play = document.getElementById("playback-play");
       play.dataset.playing = String(this.wanted);
       play.setAttribute("aria-label", this.wanted ? "Pause" : "Play");
       play.title = this.wanted ? "Pause" : "Play";
-      const seek = document.getElementById("precise-seek");
+      const seek = document.getElementById("playback-seek");
       if (!this.scrubbing) seek.value = String(this.currentTime);
       const position = this.scrubbing ? Number(seek.value) : this.currentTime;
       this.paintRange(seek);
       seek.setAttribute("aria-valuetext", `${this.formatTime(position)} of ${this.formatTime(this.manifest?.duration)}`);
-      document.getElementById("precise-time").textContent = `${this.formatTime(position)} / ${this.formatTime(this.manifest?.duration)}`;
-      document.getElementById("precise-rate").value = String(this.rate);
+      document.getElementById("playback-time").textContent = `${this.formatTime(position)} / ${this.formatTime(this.manifest?.duration)}`;
+      document.getElementById("playback-rate").value = String(this.rate);
     }
     updateVolume() {
-      const input = document.getElementById("precise-volume");
+      const input = document.getElementById("playback-volume");
       input.value = String(this.muted ? 0 : this.volume);
       input.setAttribute("aria-valuetext", `${Math.round(Number(input.value) * 100)}%`);
       this.paintRange(input);
-      const mute = document.getElementById("precise-mute");
+      const mute = document.getElementById("playback-mute");
       mute.dataset.muted = String(this.muted || this.volume === 0);
       mute.setAttribute("aria-label", this.muted || this.volume === 0 ? "Unmute" : "Mute");
       mute.title = mute.getAttribute("aria-label");
@@ -776,10 +776,10 @@
     installControls() {
       this.volume = 1;
       this.muted = false;
-      document.getElementById("precise-play").addEventListener("click", () => { this.wanted ? this.pause() : this.play(); });
-      document.getElementById("precise-retry").addEventListener("click", () => location.reload());
+      document.getElementById("playback-play").addEventListener("click", () => { this.wanted ? this.pause() : this.play(); });
+      document.getElementById("playback-retry").addEventListener("click", () => location.reload());
       this.video.addEventListener("click", () => { this.wanted ? this.pause() : this.play(); });
-      const seek = document.getElementById("precise-seek");
+      const seek = document.getElementById("playback-seek");
       this.bindRange(seek, {
         start: () => {
           if (this.scrubbing) return;
@@ -796,26 +796,26 @@
           if (this.scrubWasPlaying) this.play();
         },
       });
-      for (const [id, offset] of [["precise-backward", -JUMP_SECONDS], ["precise-forward", JUMP_SECONDS]]) {
+      for (const [id, offset] of [["playback-backward", -JUMP_SECONDS], ["playback-forward", JUMP_SECONDS]]) {
         document.getElementById(id).addEventListener("click", () => {
           this.currentTime = this.clampPosition(this.currentTime + offset);
         });
       }
-      document.getElementById("precise-rate").addEventListener("change", e => { this.playbackRate = e.target.value; });
-      this.bindRange(document.getElementById("precise-volume"), {
+      document.getElementById("playback-rate").addEventListener("change", e => { this.playbackRate = e.target.value; });
+      this.bindRange(document.getElementById("playback-volume"), {
         input: () => {
-          this.volume = Number(document.getElementById("precise-volume").value);
+          this.volume = Number(document.getElementById("playback-volume").value);
           this.muted = false;
           this.updateVolume();
         },
       });
-      document.getElementById("precise-mute").addEventListener("click", () => {
+      document.getElementById("playback-mute").addEventListener("click", () => {
         if (this.volume === 0) { this.volume = 1; this.muted = false; }
         else this.muted = !this.muted;
         this.updateVolume();
       });
       this.updateVolume();
-      document.getElementById("precise-fullscreen").addEventListener("click", () => {
+      document.getElementById("playback-fullscreen").addEventListener("click", () => {
         const container = document.body;
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         else container.requestFullscreen?.().catch(() => {});
@@ -823,5 +823,5 @@
     }
   }
 
-  window.createVideoPlayback = (video, config) => new PrecisePlayback(video, config);
+  window.createVideoPlayback = (video, config) => new VideoPlayback(video, config);
 })();

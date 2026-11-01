@@ -1,6 +1,5 @@
 """On-demand video-only fragments and pull-driven, continuous PCM audio."""
 
-import hashlib
 import json
 import logging
 import math
@@ -19,19 +18,19 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, Response
 
 from core.paths import get_video_path, named_temp_path
-from videos.video import run_media_command, stream_media_command
+from videos.video import run_media_command, load_playback_index, playback_source_version
 from videos.playback_audio import (
     SAMPLE_RATE, CHANNELS, FRAME_BYTES, CHUNK_SECONDS, read_chunk, release_session,
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/stream/precise")
+router = APIRouter(prefix="/stream/playback")
 CACHE_BYTES = 512 * 1024**2
 RATES = (0.5, 0.75, 1, 1.25, 1.5, 1.75, 2)
 _cache_lock = threading.Lock()
 _path_locks = WeakValueDictionary()
 _path_locks_lock = threading.Lock()
-# Bound simultaneous remux/probe jobs, without locking cached reads behind them.
+# Bound simultaneous remux jobs, without locking cached reads behind them.
 _jobs = threading.Semaphore(2)
 _namespace = {"d": "urn:mpeg:dash:schema:mpd:2011"}
 
@@ -130,7 +129,7 @@ def _shift_fragment(path: Path, shift: int):
 
 
 def cache_root() -> Path:
-    root = named_temp_path("precise-playback-v2")
+    root = named_temp_path("playback-video-v1")
     root.mkdir(mode=0o700, exist_ok=True)
     return root
 
@@ -139,8 +138,7 @@ def source_and_cache(video_id: UUID) -> tuple[Path, Path]:
     source = get_video_path(video_id, "video.mp4")
     if not source.is_file():
         raise HTTPException(404, "Video not found")
-    stat = source.stat()
-    version = hashlib.sha256(f"on-demand-4:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[:16]
+    version = playback_source_version(source)
     return source, cache_root() / f"{video_id}-{version}"
 
 
@@ -260,6 +258,10 @@ def _remux(source: Path, directory: Path, segment: dict) -> tuple[Path, Path, st
 
 def prepare(video_id: UUID) -> dict:
     source, directory = source_and_cache(video_id)
+    try:
+        index = load_playback_index(source)
+    except (OSError, ValueError, KeyError, TypeError):
+        raise HTTPException(503, "Playback index missing or invalid. Run python -m scripts.index_video_library.") from None
     with _path_lock(directory):
         manifest_path = directory / "ready.json"
         with _cache_lock:
@@ -267,52 +269,7 @@ def prepare(video_id: UUID) -> dict:
                 os.utime(manifest_path, None)
                 return json.loads(manifest_path.read_text())
         with _jobs:
-            metadata = json.loads(run_media_command([
-                "ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", source,
-            ], timeout=30).stdout)
-            video = next((s for s in metadata["streams"] if s["codec_type"] == "video"), None)
-            if not video or video["codec_name"] not in {"h264", "hevc"}:
-                raise HTTPException(422, "H.264 or HEVC video is required.")
-            duration = float(video.get("duration", metadata["format"]["duration"])) + float(video.get("start_time", 0))
-            if not math.isfinite(duration) or duration <= 0:
-                raise HTTPException(422, "Invalid video duration")
-            video_duration = duration
-            audio = next((stream for stream in metadata["streams"] if stream["codec_type"] == "audio"), None)
-            if audio:
-                audio_end = float(audio.get("duration", metadata["format"]["duration"])) + float(audio.get("start_time", 0))
-                if not math.isfinite(audio_end) or audio_end <= 0:
-                    raise HTTPException(422, "Invalid audio duration")
-                duration = max(duration, audio_end)
-            # Use the demuxer's key packets, which also drive stream-copy seeks
-            # and DASH boundaries. Decoding with skip_frame=nokey can omit
-            # open-GOP recovery points. Packet probing needs no video decode.
-            keyframes = {}
-
-            def index_packet(line):
-                packet = dict(field.split("=", 1) for field in line.strip().split("|") if "=" in field)
-                if "K" not in packet.get("flags", ""):
-                    return
-                try:
-                    pts, dts = float(packet["pts_time"]), float(packet["dts_time"])
-                except (KeyError, ValueError):
-                    raise HTTPException(422, "Video keyframe has no usable timestamps.") from None
-                if not math.isfinite(pts) or not math.isfinite(dts):
-                    raise HTTPException(422, "Invalid video keyframe timestamps.")
-                if pts < video_duration:
-                    keyframes[max(0, pts)] = dts
-
-            stream_media_command([
-                "ffprobe", "-v", "error", "-select_streams", "v:0",
-                "-show_packets", "-show_entries", "packet=pts_time,dts_time,flags",
-                "-of", "compact=p=0", source,
-            ], index_packet, timeout=300)
-            starts = sorted(keyframes)
-            if not starts:
-                raise HTTPException(422, "Video has no seekable keyframes.")
-            tag = "hvc1" if video["codec_name"] == "hevc" else "avc1"
-            segments = [{"number": i + 1, "start": start, "duration": end - start, "tag": tag,
-                         "decodeStart": keyframes[start], "decodeOrigin": keyframes[starts[0]]}
-                        for i, (start, end) in enumerate(zip(starts, [*starts[1:], video_duration]))]
+            segments = index["segments"]
             directory.mkdir(mode=0o700, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="mogao-fragment-") as temporary:
                 init, fragment, mime = _remux(source, Path(temporary), segments[0])
@@ -320,12 +277,10 @@ def prepare(video_id: UUID) -> dict:
                     init.replace(directory / "init.mp4")
                     fragment.replace(directory / "video-1.m4s")
                     _prune(directory / "video-1.m4s")
-            manifest = {"version": directory.name.rsplit("-", 1)[-1], "duration": duration,
-                        "videoDuration": video_duration, "mime": mime, "segments": segments,
-                        "audio": any(s["codec_type"] == "audio" for s in metadata["streams"]),
-                        "chunkSeconds": CHUNK_SECONDS, "sampleRate": SAMPLE_RATE, "rates": RATES}
+            manifest = {**index, "mime": mime, "chunkSeconds": CHUNK_SECONDS,
+                        "sampleRate": SAMPLE_RATE, "rates": RATES}
             if source_and_cache(video_id)[1] != directory:
-                raise HTTPException(409, "Video changed while indexing. Reload the player.")
+                raise HTTPException(409, "Video changed while preparing playback. Reload the player.")
             with tempfile.NamedTemporaryFile(mode="w", dir=directory, suffix=".tmp", delete=False) as file:
                 temporary_manifest = Path(file.name)
                 json.dump(manifest, file)
