@@ -200,9 +200,7 @@ function saveVideoProgress(keepalive = false) {
   }).catch((error) => console.error("Failed to save video progress:", error));
 }
 
-// The playback controller restores the configured position after MSE is ready.
-// loadedmetadata can report a temporary duration of zero on Safari; clamping
-// the saved position there overwrote it before the first fragment was loaded.
+// Save progress only after the controller restores the initial position.
 playback.ready.then(() => saveVideoProgress()).catch(() => {});
 
 video.addEventListener("timeupdate", () => {

@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=17"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v={{ playback_asset_version }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=7" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -173,6 +173,6 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='precise_playback.js') }}?v={{ playback_asset_version }}"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v={{ playback_asset_version }}"></script>
+  <script src="{{ url_for('static', path='precise_playback.js') }}?v=1"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=14"></script>
 </html>

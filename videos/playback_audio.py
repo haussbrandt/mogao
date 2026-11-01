@@ -5,6 +5,7 @@ import contextlib
 import subprocess
 import threading
 import time
+from weakref import WeakValueDictionary
 
 from fastapi import HTTPException
 from videos import playback_audio_cache as replay
@@ -18,7 +19,7 @@ HISTORY_CHUNKS = 6
 IDLE_SECONDS = 90
 _lock = threading.RLock()
 _streams = {}
-_session_locks = {}
+_session_locks = WeakValueDictionary()
 _generations = {}
 
 
@@ -96,19 +97,13 @@ class AudioStream:
         return self.history[chunk]
 
 
-@contextlib.contextmanager
 def session_lock(session):
     with _lock:
-        entry = _session_locks.setdefault(session, [threading.Lock(), 0])
-        entry[1] += 1
-    try:
-        with entry[0]:
-            yield
-    finally:
-        with _lock:
-            entry[1] -= 1
-            if not entry[1]:
-                del _session_locks[session]
+        lock = _session_locks.get(session)
+        if lock is None:
+            lock = threading.Lock()
+            _session_locks[session] = lock
+        return lock
 
 
 def read_chunk(session, source, version, generation, origin, rate, duration, chunk):
@@ -177,16 +172,10 @@ def _read_chunk(session, source, version, generation, origin, rate, duration, ch
         result = stream.read(chunk)
         stream.used = time.monotonic()
         return result
-    except HTTPException as error:
+    except Exception as error:
         # Missing speculative history must not destroy upcoming live audio.
-        if error.status_code == 410:
+        if isinstance(error, HTTPException) and error.status_code == 410:
             raise
-        with _lock:
-            if _streams.get(key) is stream:
-                del _streams[key]
-        stream.close()
-        raise
-    except Exception:
         with _lock:
             if _streams.get(key) is stream:
                 del _streams[key]

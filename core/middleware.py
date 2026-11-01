@@ -98,7 +98,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         value=_make_token(),
                         max_age=SESSION_MAX_AGE,
                         httponly=True,
-                        secure=request.url.scheme == "https",
+                        secure=True,  # drop to False if testing over plain HTTP
                         samesite="strict",
                     )
                     return response

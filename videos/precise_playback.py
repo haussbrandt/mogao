@@ -6,11 +6,14 @@ import logging
 import math
 import os
 import struct
+import shutil
+import time
 import tempfile
 import threading
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from uuid import UUID
+from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, Response
@@ -18,7 +21,7 @@ from fastapi.responses import StreamingResponse, Response
 from core.paths import get_video_path, named_temp_path
 from videos.video import run_media_command, stream_media_command
 from videos.playback_audio import (
-    SAMPLE_RATE, CHANNELS, FRAME_BYTES, CHUNK_SECONDS, read_chunk, session_lock, release_session,
+    SAMPLE_RATE, CHANNELS, FRAME_BYTES, CHUNK_SECONDS, read_chunk, release_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -26,9 +29,20 @@ router = APIRouter(prefix="/stream/precise")
 CACHE_BYTES = 512 * 1024**2
 RATES = (0.5, 0.75, 1, 1.25, 1.5, 1.75, 2)
 _cache_lock = threading.Lock()
+_path_locks = WeakValueDictionary()
+_path_locks_lock = threading.Lock()
 # Bound simultaneous remux/probe jobs, without locking cached reads behind them.
 _jobs = threading.Semaphore(2)
 _namespace = {"d": "urn:mpeg:dash:schema:mpd:2011"}
+
+
+def _path_lock(path):
+    with _path_locks_lock:
+        lock = _path_locks.get(path)
+        if lock is None:
+            lock = threading.Lock()
+            _path_locks[path] = lock
+        return lock
 
 
 def _box(data: bytes, *path: bytes) -> bytes:
@@ -126,39 +140,80 @@ def source_and_cache(video_id: UUID) -> tuple[Path, Path]:
     if not source.is_file():
         raise HTTPException(404, "Video not found")
     stat = source.stat()
-    version = hashlib.sha256(f"on-demand-3:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[:16]
+    version = hashlib.sha256(f"on-demand-4:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[:16]
     return source, cache_root() / f"{video_id}-{version}"
 
 
-def _prune(keep: Path):
-    # Evict individual regenerable fragments, including old parts of the
-    # current movie. Cache capacity never determines playable movie length.
+def _cache_files(directory):
     files = []
-    for path in cache_root().glob("*/*.m4s"):
+    for path in directory.glob("*/*"):
         try:
-            files.append((path, path.stat()))
+            if path.is_file() and path.suffix != ".tmp":
+                files.append((path, path.stat()))
         except FileNotFoundError:
             pass
+    return files
+
+
+def _prune(keep: Path):
+    root = cache_root()
+    # Requests touch ready.json. Keep active indexes, but discard obsolete or
+    # idle indexes together with their init and fragments. Active indexes are
+    # the only working-set exception to the cache budget.
+    directories = []
+    for directory in root.iterdir():
+        if not directory.is_dir() or directory == keep.parent:
+            continue
+        try:
+            video_id = UUID(directory.name.rsplit("-", 1)[0])
+            source = get_video_path(video_id, "video.mp4")
+            obsolete = not source.is_file() or source_and_cache(video_id)[1] != directory
+            manifest = directory / "ready.json"
+            used = manifest.stat().st_mtime if manifest.exists() else directory.stat().st_mtime
+            if obsolete:
+                try:
+                    shutil.rmtree(directory)
+                except OSError:
+                    continue
+            else:
+                directories.append((used, directory))
+        except (FileNotFoundError, ValueError):
+            continue
+    files = _cache_files(root)
     total = sum(stat.st_size for _, stat in files)
+    for used, directory in sorted(directories):
+        if total <= CACHE_BYTES:
+            break
+        if time.time() - used < 90:
+            continue
+        size = sum(stat.st_size for path, stat in files if path.parent == directory)
+        try:
+            shutil.rmtree(directory)
+        except OSError:
+            continue
+        total -= size
     for path, stat in sorted(files, key=lambda item: item[1].st_mtime):
         if total <= CACHE_BYTES:
             break
-        if path == keep:
+        if path.suffix != ".m4s" or path == keep:
             continue
         try:
             path.unlink()
             total -= stat.st_size
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             pass
-        except PermissionError:
-            # Platforms which cannot unlink an open streaming response retry
-            # eviction on the next request.
-            continue
-    try:
-        if total > CACHE_BYTES and keep.stat().st_size > CACHE_BYTES:
-            keep.unlink()
-    except (FileNotFoundError, PermissionError):
-        pass
+    if keep.suffix == ".m4s":
+        try:
+            if total > CACHE_BYTES and keep.stat().st_size > CACHE_BYTES:
+                keep.unlink()
+        except (FileNotFoundError, PermissionError):
+            pass
+
+
+def remove_video_cache(video_id: UUID):
+    with _cache_lock:
+        for directory in cache_root().glob(f"{video_id}-*"):
+            shutil.rmtree(directory, ignore_errors=True)
 
 
 def _remux(source: Path, directory: Path, segment: dict) -> tuple[Path, Path, str]:
@@ -205,10 +260,12 @@ def _remux(source: Path, directory: Path, segment: dict) -> tuple[Path, Path, st
 
 def prepare(video_id: UUID) -> dict:
     source, directory = source_and_cache(video_id)
-    with session_lock(str(directory)):
+    with _path_lock(directory):
         manifest_path = directory / "ready.json"
-        if manifest_path.is_file():
-            return json.loads(manifest_path.read_text())
+        with _cache_lock:
+            if manifest_path.is_file():
+                os.utime(manifest_path, None)
+                return json.loads(manifest_path.read_text())
         with _jobs:
             metadata = json.loads(run_media_command([
                 "ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", source,
@@ -219,6 +276,13 @@ def prepare(video_id: UUID) -> dict:
             duration = float(video.get("duration", metadata["format"]["duration"])) + float(video.get("start_time", 0))
             if not math.isfinite(duration) or duration <= 0:
                 raise HTTPException(422, "Invalid video duration")
+            video_duration = duration
+            audio = next((stream for stream in metadata["streams"] if stream["codec_type"] == "audio"), None)
+            if audio:
+                audio_end = float(audio.get("duration", metadata["format"]["duration"])) + float(audio.get("start_time", 0))
+                if not math.isfinite(audio_end) or audio_end <= 0:
+                    raise HTTPException(422, "Invalid audio duration")
+                duration = max(duration, audio_end)
             # Use the demuxer's key packets, which also drive stream-copy seeks
             # and DASH boundaries. Decoding with skip_frame=nokey can omit
             # open-GOP recovery points. Packet probing needs no video decode.
@@ -234,7 +298,7 @@ def prepare(video_id: UUID) -> dict:
                     raise HTTPException(422, "Video keyframe has no usable timestamps.") from None
                 if not math.isfinite(pts) or not math.isfinite(dts):
                     raise HTTPException(422, "Invalid video keyframe timestamps.")
-                if pts < duration:
+                if pts < video_duration:
                     keyframes[max(0, pts)] = dts
 
             stream_media_command([
@@ -248,7 +312,7 @@ def prepare(video_id: UUID) -> dict:
             tag = "hvc1" if video["codec_name"] == "hevc" else "avc1"
             segments = [{"number": i + 1, "start": start, "duration": end - start, "tag": tag,
                          "decodeStart": keyframes[start], "decodeOrigin": keyframes[starts[0]]}
-                        for i, (start, end) in enumerate(zip(starts, [*starts[1:], duration]))]
+                        for i, (start, end) in enumerate(zip(starts, [*starts[1:], video_duration]))]
             directory.mkdir(mode=0o700, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="mogao-fragment-") as temporary:
                 init, fragment, mime = _remux(source, Path(temporary), segments[0])
@@ -257,7 +321,7 @@ def prepare(video_id: UUID) -> dict:
                     fragment.replace(directory / "video-1.m4s")
                     _prune(directory / "video-1.m4s")
             manifest = {"version": directory.name.rsplit("-", 1)[-1], "duration": duration,
-                        "mime": mime, "segments": segments,
+                        "videoDuration": video_duration, "mime": mime, "segments": segments,
                         "audio": any(s["codec_type"] == "audio" for s in metadata["streams"]),
                         "chunkSeconds": CHUNK_SECONDS, "sampleRate": SAMPLE_RATE, "rates": RATES}
             if source_and_cache(video_id)[1] != directory:
@@ -266,7 +330,9 @@ def prepare(video_id: UUID) -> dict:
                 temporary_manifest = Path(file.name)
                 json.dump(manifest, file)
             try:
-                temporary_manifest.replace(manifest_path)
+                with _cache_lock:
+                    temporary_manifest.replace(manifest_path)
+                    _prune(manifest_path)
             finally:
                 temporary_manifest.unlink(missing_ok=True)
             return manifest
@@ -277,9 +343,11 @@ def prepared_cache(video_id: UUID, version: str) -> tuple[Path, dict]:
     if directory.name.rsplit("-", 1)[-1] != version:
         raise HTTPException(409, "Video changed. Reload the player.")
     manifest = directory / "ready.json"
-    if not manifest.is_file():
-        raise HTTPException(409, "Playback cache expired. Reload the player.")
-    return directory, json.loads(manifest.read_text())
+    with _cache_lock:
+        if manifest.is_file():
+            os.utime(manifest, None)
+            return directory, json.loads(manifest.read_text())
+    return directory, prepare(video_id)
 
 
 @router.get("/{video_id}/manifest")
@@ -304,7 +372,7 @@ def _open_video(video_id: UUID, version: str, number: int):
     if number < 0 or number > len(manifest["segments"]):
         raise HTTPException(404, "Video segment not found")
     path = directory / ("init.mp4" if number == 0 else f"video-{number}.m4s")
-    with session_lock(str(path)):
+    with _path_lock(path):
         with _cache_lock:
             try:
                 file = path.open("rb")
@@ -353,7 +421,5 @@ def audio_chunk(video_id: UUID, version: str, chunk: int, rate: float = Query(1)
                          16, 1, CHANNELS, SAMPLE_RATE, SAMPLE_RATE * FRAME_BYTES,
                          FRAME_BYTES, 16, b"data", len(data))
     return Response(header + data, media_type="audio/wav", headers={
-        # Full WAV responses can use the app's negotiated gzip compression.
-        # fetch() decompresses them before decodeAudioData; PCM is unchanged.
         "Cache-Control": "no-store",
     })

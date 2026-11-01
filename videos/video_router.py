@@ -24,7 +24,6 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import AnyHttpUrl, BaseModel
 
 from core.config import settings
-from core.assets import asset_version
 from core.coverage import VOCABULARY_STATS_FILENAME, refresh_coverage
 from core.known_words import load_local_vocabulary
 from core.dependencies import postprocessor, templates
@@ -46,7 +45,7 @@ from integrations.llm_processor import (
     schedule_video_dictionary_job,
 )
 from videos.video import Video, cut_audio, generate_video, run_media_command, take_screenshot
-from videos.precise_playback import router as precise_playback_router
+from videos.precise_playback import router as precise_playback_router, remove_video_cache
 from videos.video_library import (
     load_video_cached,
     load_video_progress,
@@ -993,6 +992,7 @@ async def delete_video(video_id: UUID):
             # A partial deletion must not leave the dictionary job running.
             cancel_video_dictionary_job(video_id_string)
             shutil.rmtree(video_path)
+            remove_video_cache(video_id)
             load_video_cached.cache_clear()
         except Exception:
             logger.exception(f"Error deleting video {video_id_string}")
@@ -1075,7 +1075,6 @@ async def watch_video(request: Request, video_id: UUID):
             "local_vocabulary": load_local_vocabulary() if settings.anki.enabled else {"words": {}, "revision": 0},
             "anki_enabled": settings.anki.enabled,
             "video_base_path": VIDEO_BASE_PATH,
-            "playback_asset_version": asset_version("precise_playback.js", "video.js", "video.css"),
         },
         headers={"Cache-Control": "no-store"},
     )

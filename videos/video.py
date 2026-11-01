@@ -105,10 +105,8 @@ class Video:
     source_identity: tuple[str, str] | None = None
 
 
-def run_media_command(
-    command: list[str | os.PathLike[str]], *, timeout: float
-) -> subprocess.CompletedProcess[str]:
-    """Run a bounded media command, killing its process group on POSIX on failure."""
+@contextmanager
+def _media_process(command, *, stderr=subprocess.PIPE):
     with _media_process_lock:
         if _media_shutdown:
             raise RuntimeError("Media processing is shutting down")
@@ -116,7 +114,7 @@ def run_media_command(
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr,
             text=True,
             errors="replace",
             start_new_session=os.name == "posix",
@@ -128,17 +126,23 @@ def run_media_command(
     try:
         with process:
             try:
-                stdout, stderr = process.communicate(timeout=timeout)
+                yield process
             except BaseException:
-                # yt-dlp may have started FFmpeg. Stop children too, before the
-                # caller removes temporary files. Reap the parent without waiting
-                # for EOF on pipes that an escaped child might still hold open.
+                # Kill children before closing pipes that they may still hold open.
                 _kill_media_process(process)
                 process.wait()
                 raise
     finally:
         with _media_process_lock:
             _media_processes.discard(process)
+
+
+def run_media_command(
+    command: list[str | os.PathLike[str]], *, timeout: float
+) -> subprocess.CompletedProcess[str]:
+    """Run a bounded media command, killing its process group on POSIX on failure."""
+    with _media_process(command) as process:
+        stdout, stderr = process.communicate(timeout=timeout)
 
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     result.check_returncode()
@@ -149,18 +153,7 @@ def stream_media_command(
     command: list[str | os.PathLike[str]], on_line: Callable[[str], None], *, timeout: float
 ) -> None:
     """Consume stdout incrementally, with the same shutdown/timeout ownership."""
-    with tempfile.TemporaryFile(mode="w+t") as errors:
-        with _media_process_lock:
-            if _media_shutdown:
-                raise RuntimeError("Media processing is shutting down")
-            process = subprocess.Popen(
-                command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=errors, text=True, errors="replace",
-                start_new_session=os.name == "posix",
-            )
-            _media_processes.add(process)
-            if _media_shutdown:
-                _kill_media_process(process)
+    with tempfile.TemporaryFile(mode="w+t") as errors, _media_process(command, stderr=errors) as process:
         expired = threading.Event()
 
         def expire():
@@ -184,12 +177,6 @@ def stream_media_command(
         finally:
             timer.cancel()
             timer.join()
-            if process.poll() is None:
-                _kill_media_process(process)
-            process.wait()
-            process.stdout.close()
-            with _media_process_lock:
-                _media_processes.discard(process)
 
 
 def probe_video_codec(path: str | os.PathLike[str]) -> str:
