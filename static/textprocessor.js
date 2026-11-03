@@ -201,15 +201,19 @@ function getSentence(startNode, startOffset) {
 	let currentNode = startNode;
 	let currentOffset = startOffset;
 	while (charsNeeded > 0 && currentNode) {
-	  const available = currentNode.textContent.length - currentOffset;
-	  const take = Math.min(charsNeeded, available);
-	  if (take > 0) {
+	  const text = currentNode.textContent;
+	  let endOffset = currentOffset;
+	  // Lookup strips whitespace, so only non-whitespace consumes the match.
+	  while (endOffset < text.length && charsNeeded > 0) {
+		if (!/\s/.test(text[endOffset])) charsNeeded--;
+		endOffset++;
+	  }
+	  if (endOffset > currentOffset) {
 		nodesToWrap.push({
 		  node: currentNode,
 		  start: currentOffset,
-		  end: currentOffset + take,
+		  end: endOffset,
 		});
-		charsNeeded -= take;
 	  }
 	  if (charsNeeded > 0) {
 		currentNode = walker.nextNode();
