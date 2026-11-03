@@ -38,8 +38,41 @@ def _chat_completions_url(base_url: str) -> str:
     return f"{url}/chat/completions"
 
 
+def _body_retry_delays(response: requests.Response) -> list[float]:
+    try:
+        body = response.json()
+    except ValueError:
+        return []
+    if not isinstance(body, dict):
+        return []
+
+    candidates = [body]
+    error = body.get("error")
+    if isinstance(error, dict):
+        candidates.append(error)
+        details = error.get("details")
+        if isinstance(details, list):
+            candidates.extend(detail for detail in details if isinstance(detail, dict))
+
+    delays = []
+    for candidate in candidates:
+        value = candidate.get("retryDelay")
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            continue
+        if isinstance(value, str):
+            value = value.strip().removesuffix("s")
+        try:
+            delay = float(value)
+        except (ValueError, OverflowError):
+            continue
+        if math.isfinite(delay) and delay >= 0:
+            delays.append(delay)
+    return delays
+
+
 def _retry_delay(response: requests.Response | None, attempt: int) -> float:
     if response is not None:
+        delays = _body_retry_delays(response)
         retry_after = response.headers.get("Retry-After")
         if retry_after:
             try:
@@ -55,7 +88,10 @@ def _retry_delay(response: requests.Response | None, attempt: int) -> float:
                 else:
                     delay = max(0.0, delay)
             if math.isfinite(delay) and delay >= 0:
-                return delay
+                delays.append(delay)
+        if delays:
+            # Honor every server hint, even when it exceeds our backoff cap.
+            return max(delays)
     return min(
         INITIAL_RETRY_DELAY_SECONDS * (2**attempt),
         MAX_RETRY_DELAY_SECONDS,
