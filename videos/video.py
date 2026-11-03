@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import math
@@ -10,6 +11,7 @@ import tempfile
 import threading
 import uuid
 from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from fractions import Fraction
@@ -104,10 +106,8 @@ class Video:
     source_identity: tuple[str, str] | None = None
 
 
-def run_media_command(
-    command: list[str | os.PathLike[str]], *, timeout: float
-) -> subprocess.CompletedProcess[str]:
-    """Run a bounded media command, killing its process group on POSIX on failure."""
+@contextmanager
+def _media_process(command, *, stderr=subprocess.PIPE):
     with _media_process_lock:
         if _media_shutdown:
             raise RuntimeError("Media processing is shutting down")
@@ -115,7 +115,7 @@ def run_media_command(
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr,
             text=True,
             errors="replace",
             start_new_session=os.name == "posix",
@@ -127,11 +127,9 @@ def run_media_command(
     try:
         with process:
             try:
-                stdout, stderr = process.communicate(timeout=timeout)
+                yield process
             except BaseException:
-                # yt-dlp may have started FFmpeg. Stop children too, before the
-                # caller removes temporary files. Reap the parent without waiting
-                # for EOF on pipes that an escaped child might still hold open.
+                # Kill children before closing pipes that they may still hold open.
                 _kill_media_process(process)
                 process.wait()
                 raise
@@ -139,9 +137,126 @@ def run_media_command(
         with _media_process_lock:
             _media_processes.discard(process)
 
+
+def run_media_command(
+    command: list[str | os.PathLike[str]], *, timeout: float
+) -> subprocess.CompletedProcess[str]:
+    """Run a bounded media command, killing its process group on POSIX on failure."""
+    with _media_process(command) as process:
+        stdout, stderr = process.communicate(timeout=timeout)
+
     result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     result.check_returncode()
     return result
+
+
+def stream_media_command(
+    command: list[str | os.PathLike[str]], on_line: Callable[[str], None], *, timeout: float
+) -> None:
+    """Consume stdout incrementally, with the same shutdown/timeout ownership."""
+    with tempfile.TemporaryFile(mode="w+t") as errors, _media_process(command, stderr=errors) as process:
+        expired = threading.Event()
+
+        def expire():
+            expired.set()
+            _kill_media_process(process)
+
+        timer = threading.Timer(timeout, expire)
+        timer.daemon = True
+        try:
+            timer.start()
+            for line in process.stdout:
+                on_line(line)
+            process.wait()
+            timer.cancel()
+            timer.join()
+            if expired.is_set():
+                raise subprocess.TimeoutExpired(command, timeout)
+            if process.returncode:
+                errors.seek(0)
+                raise subprocess.CalledProcessError(process.returncode, command, stderr=errors.read(65536))
+        finally:
+            timer.cancel()
+            timer.join()
+
+
+def playback_source_version(source: Path) -> str:
+    stat = source.stat()
+    return hashlib.sha256(f"playback-index-1:{stat.st_size}:{stat.st_mtime_ns}".encode()).hexdigest()[:16]
+
+
+def load_playback_index(source: Path) -> dict:
+    """Read an import-time index; playback must never generate a missing index."""
+    index = json.loads(source.with_name("playback-index.json").read_text())
+    if index["version"] != playback_source_version(source):
+        raise ValueError("Playback index does not match the video")
+    if not index["segments"]:
+        raise ValueError("Playback index has no segments")
+    return index
+
+
+def index_video(source: Path) -> dict:
+    """Persist keyframe metadata without generating video fragments or audio."""
+    source = Path(source)
+    version = playback_source_version(source)
+    metadata = json.loads(run_media_command([
+        "ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", source,
+    ], timeout=30).stdout)
+    video = next((s for s in metadata["streams"] if s["codec_type"] == "video"), None)
+    if not video or video["codec_name"] not in {"h264", "hevc"}:
+        raise ValueError("H.264 or HEVC video is required.")
+    duration = float(video.get("duration") or metadata["format"]["duration"]) + float(video.get("start_time", 0))
+    if not math.isfinite(duration) or duration <= 0:
+        raise ValueError("Invalid video duration")
+    video_duration = duration
+    audio = next((stream for stream in metadata["streams"] if stream["codec_type"] == "audio"), None)
+    if audio:
+        audio_end = float(audio.get("duration") or metadata["format"]["duration"]) + float(audio.get("start_time", 0))
+        if not math.isfinite(audio_end) or audio_end <= 0:
+            raise ValueError("Invalid audio duration")
+        duration = max(duration, audio_end)
+    # Use the demuxer's key packets, which also drive stream-copy seeks
+    # and DASH boundaries. Decoding with skip_frame=nokey can omit
+    # open-GOP recovery points. Packet probing needs no video decode.
+    keyframes = {}
+
+    def index_packet(line):
+        packet = dict(field.split("=", 1) for field in line.strip().split("|") if "=" in field)
+        if "K" not in packet.get("flags", ""):
+            return
+        try:
+            pts, dts = float(packet["pts_time"]), float(packet["dts_time"])
+        except (KeyError, ValueError):
+            raise ValueError("Video keyframe has no usable timestamps.") from None
+        if not math.isfinite(pts) or not math.isfinite(dts):
+            raise ValueError("Invalid video keyframe timestamps.")
+        if pts < video_duration:
+            keyframes[max(0, pts)] = dts
+
+    stream_media_command([
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_packets", "-show_entries", "packet=pts_time,dts_time,flags",
+        "-of", "compact=p=0", source,
+    ], index_packet, timeout=300)
+    starts = sorted(keyframes)
+    if not starts:
+        raise ValueError("Video has no seekable keyframes.")
+    tag = "hvc1" if video["codec_name"] == "hevc" else "avc1"
+    segments = [{"number": i + 1, "start": start, "duration": end - start, "tag": tag,
+                 "decodeStart": keyframes[start], "decodeOrigin": keyframes[starts[0]]}
+                for i, (start, end) in enumerate(zip(starts, [*starts[1:], video_duration]))]
+    index = {"version": version, "duration": duration, "videoDuration": video_duration,
+             "segments": segments, "audio": audio is not None}
+    if playback_source_version(source) != version:
+        raise ValueError("Video changed while indexing")
+    with tempfile.NamedTemporaryFile(mode="w", dir=source.parent, suffix=".tmp", delete=False) as file:
+        temporary = Path(file.name)
+        json.dump(index, file)
+    try:
+        temporary.replace(source.with_name("playback-index.json"))
+    finally:
+        temporary.unlink(missing_ok=True)
+    return index
 
 
 def probe_video_codec(path: str | os.PathLike[str]) -> str:
@@ -323,6 +438,8 @@ def generate_video(
         ]
 
         run_media_command(cmd, timeout=THUMBNAIL_TIMEOUT_SECONDS)
+
+        index_video(video_output_path)
 
         processed_video = Video(
             metadata=metadata,

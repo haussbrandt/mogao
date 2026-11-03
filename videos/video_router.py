@@ -45,6 +45,7 @@ from integrations.llm_processor import (
     schedule_video_dictionary_job,
 )
 from videos.video import Video, cut_audio, generate_video, run_media_command, take_screenshot
+from videos.playback import router as playback_router, remove_video_cache
 from videos.video_library import (
     load_video_cached,
     load_video_progress,
@@ -58,6 +59,7 @@ logger = logging.getLogger(__name__)
 VIDEO_BASE_PATH = "/video"
 
 router = APIRouter(prefix=VIDEO_BASE_PATH)
+router.include_router(playback_router)
 
 ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mkv", ".mov", ".avi", ".webm")
 ALLOWED_SUBTITLE_EXTENSIONS = (".srt",)
@@ -990,6 +992,7 @@ async def delete_video(video_id: UUID):
             # A partial deletion must not leave the dictionary job running.
             cancel_video_dictionary_job(video_id_string)
             shutil.rmtree(video_path)
+            remove_video_cache(video_id)
             load_video_cached.cache_clear()
         except Exception:
             logger.exception(f"Error deleting video {video_id_string}")
@@ -1073,17 +1076,8 @@ async def watch_video(request: Request, video_id: UUID):
             "anki_enabled": settings.anki.enabled,
             "video_base_path": VIDEO_BASE_PATH,
         },
+        headers={"Cache-Control": "no-store"},
     )
-
-
-@router.get("/stream/{video_id}")
-def stream_video(video_id: UUID):
-    video_path = get_video_path(video_id, "video.mp4")
-
-    if os.path.exists(video_path):
-        return FileResponse(video_path, media_type="video/mp4")
-    else:
-        raise HTTPException(status_code=404, detail="video not found")
 
 
 @router.get("/{video_id}/subtitles")

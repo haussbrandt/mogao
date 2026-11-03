@@ -3,12 +3,16 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import time
 
 import bcrypt
 from fastapi import Request, Response
+from starlette._utils import get_route_path
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.types import Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +64,21 @@ def _token_valid(signed: str) -> bool:
 PUBLIC_PATHS = {"/static/site.webmanifest"}
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 REQUEST_HEADER = "X-Mogao-Request"
+
+
+class PlaybackGZipMiddleware(GZipMiddleware):
+    """Leave video fragments outside gzip's response-header buffering."""
+
+    _video_fragment = re.compile(r"/video/stream/playback/[^/]+/[^/]+/video/[0-9]+")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and self._video_fragment.fullmatch(get_route_path(scope)):
+            # Even Content-Encoding: identity leaves headers buffered by gzip.
+            # A disconnect before the first chunk then makes BaseHTTPMiddleware
+            # report "No response returned." Authentication still wraps us.
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
