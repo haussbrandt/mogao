@@ -1,13 +1,13 @@
+import math
 import os
 import shutil
 import subprocess
 import time
+import tomllib
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
-
-import tomllib
 
 from books.library import load_book_cached
 from core.config import PROJECT_ROOT, settings
@@ -19,7 +19,6 @@ from integrations.anki import (
 )
 from integrations.llm_processor import load_book_dict, load_video_dict
 from videos.video_library import load_video_cached
-
 
 STARTED_AT = time.monotonic()
 
@@ -51,9 +50,7 @@ def _format_timestamp(
     if not value:
         return None
     try:
-        timestamp_format = (
-            "%Y-%m-%d %H:%M:%S" if include_seconds else "%Y-%m-%d %H:%M"
-        )
+        timestamp_format = "%Y-%m-%d %H:%M:%S" if include_seconds else "%Y-%m-%d %H:%M"
         return datetime.fromisoformat(value).astimezone().strftime(timestamp_format)
     except ValueError:
         return value
@@ -244,9 +241,7 @@ def _dictionary_status(
             "Book",
             book_id,
             title,
-            _dictionary_summary(
-                book_id, get_book_dict_path(book_id), load_book_dict
-            ),
+            _dictionary_summary(book_id, get_book_dict_path(book_id), load_book_dict),
         )
         for book_id, title in books
     ]
@@ -362,12 +357,34 @@ def _postprocessing_status(postprocessor) -> dict:
     else:
         card_label = "card" if waiting_card_count == 1 else "cards"
         state_label = (
-            f"{state.replace('_', ' ').title()} · "
-            f"{waiting_card_count} {card_label}"
+            f"{state.replace('_', ' ').title()} · {waiting_card_count} {card_label}"
         )
+
+    next_run_seconds = None
+    if (
+        enabled
+        and not active
+        and postprocessor.timer_task is not None
+        and not postprocessor.timer_task.done()
+        and postprocessor.next_run_at is not None
+    ):
+        next_run_seconds = max(
+            0, math.ceil(postprocessor.next_run_at - time.monotonic())
+        )
+
+    next_run_label = "Not scheduled"
+    if next_run_seconds is not None:
+        hours, remainder = divmod(next_run_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration = f"{minutes}m {seconds}s" if minutes or hours else f"{seconds}s"
+        if hours:
+            duration = f"{hours}h {duration}"
+        next_run_label = f"{duration}" if next_run_seconds else "Now"
 
     return {
         "state": state,
+        "next_run_seconds": next_run_seconds,
+        "next_run_label": next_run_label,
         "state_label": state_label,
         "text_enabled": text_enabled,
         "audio_enabled": audio_enabled,
@@ -406,22 +423,17 @@ def build_status(postprocessor, video_processing_jobs: dict) -> dict:
     ]
     storage_low = any(filesystem["low"] for filesystem in storage)
     dictionary_problem = any(job["status"] == "error" for job in dictionaries)
-    dictionary_active = any(
-        job["status"] == "processing" for job in dictionaries
-    )
+    dictionary_active = any(job["status"] == "processing" for job in dictionaries)
     video_problem = any(job["status"] == "failed" for job in video_jobs)
     video_active = any(
-        job["status"] in {"queued", "downloading", "processing"}
-        for job in video_jobs
+        job["status"] in {"queued", "downloading", "processing"} for job in video_jobs
     )
     postprocessing_problem = (
         postprocessing["state"] == "unavailable"
         or postprocessing["failed_card_count"] > 0
     )
     postprocessing_active = postprocessing["state"] == "active"
-    background_work_active = (
-        dictionary_active or video_active or postprocessing_active
-    )
+    background_work_active = dictionary_active or video_active or postprocessing_active
 
     if storage_low or dictionary_problem or video_problem or postprocessing_problem:
         overall = {

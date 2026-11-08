@@ -11,6 +11,29 @@
 
   if (!refreshUrl || !statusContent || !connectionMessage) return;
 
+  const countdownDeadlines = new WeakMap();
+
+  function updateCountdown() {
+    const countdown = statusContent.querySelector("[data-postprocessing-countdown]");
+    if (!countdown) return;
+    if (!countdownDeadlines.has(countdown)) {
+      countdownDeadlines.set(
+        countdown,
+        performance.now() + Number(countdown.dataset.postprocessingCountdown) * 1000,
+      );
+    }
+    const remaining = Math.max(
+      0,
+      Math.ceil((countdownDeadlines.get(countdown) - performance.now()) / 1000),
+    );
+    const hours = Math.floor(remaining / 3600);
+    const minutes = Math.floor((remaining % 3600) / 60);
+    const seconds = remaining % 60;
+    let duration = minutes || hours ? `${minutes}m ${seconds}s` : `${seconds}s`;
+    if (hours) duration = `${hours}h ${duration}`;
+    countdown.textContent = remaining ? duration : "Now";
+  }
+
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
     if (!document.hidden) {
@@ -70,6 +93,7 @@
       const scrollY = window.scrollY;
       statusContent.replaceWith(replacement);
       statusContent = replacement;
+      updateCountdown();
       lastRefresh = new Date();
       connectionMessage.hidden = true;
       document.body.classList.remove("status-stale");
@@ -121,5 +145,7 @@
     }
   });
 
+  updateCountdown();
+  setInterval(updateCountdown, 1000);
   scheduleRefresh();
 })();

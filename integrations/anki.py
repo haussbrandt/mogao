@@ -80,6 +80,7 @@ class Postprocessor:
         self.last_timer_reset = time.time()
         self.lock = asyncio.Lock()
         self.timer_task = None
+        self.next_run_at: float | None = None
         self.eleven_client = None
         self._failed_card_ids_lock = threading.Lock()
         self._failed_card_ids_revision = 0
@@ -212,6 +213,7 @@ class Postprocessor:
 
     async def start_timer(self):
         try:
+            self.next_run_at = time.monotonic() + self.timeout
             await asyncio.sleep(self.timeout)
             await self.check_and_process()
         except asyncio.CancelledError:
@@ -221,6 +223,7 @@ class Postprocessor:
         finally:
             if self.timer_task is asyncio.current_task():
                 self.timer_task = None
+                self.next_run_at = None
 
     async def run_text_postprocessing(self, card_ids):
         failed_card_ids = set(card_ids)

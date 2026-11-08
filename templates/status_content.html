@@ -34,6 +34,10 @@
         <dd>{{ status.postprocessing.state_label }}</dd>
       </div>
       <div>
+        <dt>Next run</dt>
+        <dd{% if status.postprocessing.next_run_seconds is not none %} data-postprocessing-countdown="{{ status.postprocessing.next_run_seconds }}"{% endif %}>{{ status.postprocessing.next_run_label }}</dd>
+      </div>
+      <div>
         <dt>Text</dt>
         <dd>
           {{ 'Enabled' if status.postprocessing.text_enabled else 'Disabled' }}
