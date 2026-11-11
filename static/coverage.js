@@ -152,10 +152,7 @@ function initializeCoverage() {
 
   function loadItemDictionary() {
     if (!itemDictionary) {
-      const pending = Promise.all([
-        loadDictionary(),
-        fetchJson(selectedButton.dataset.dictionaryUrl),
-      ]);
+      const pending = fetchJson(selectedButton.dataset.dictionaryUrl);
       itemDictionary = pending;
       // A failed preload can be retried on lookup. An old item's failure must
       // not discard the dictionary of a newly opened item.
@@ -166,7 +163,7 @@ function initializeCoverage() {
     return itemDictionary;
   }
 
-  async function openLookup(word) {
+  async function openLookup(word, pinyin = "") {
     const request = ++lookupRequest;
     if (!lookup.open) lookup.showModal();
     lookupBody.replaceChildren();
@@ -175,11 +172,11 @@ function initializeCoverage() {
     loading.textContent = "Loading…";
     lookupBody.appendChild(loading);
     try {
-      const [, generated] = await loadItemDictionary();
+      const [, generated] = await Promise.all([loadDictionary(), loadItemDictionary()]);
       if (request !== lookupRequest) return;
       replaceGeneratedDictionaryWords(generated.words);
       lookupRenderer ||= createDictionaryPopupRenderer(lookupBody);
-      const result = dictionaryResultForWord(word);
+      const result = dictionaryResultForWord(word, pinyin);
       // Keep the known-word action available even for dictionary misses.
       lookupRenderer.show([result || {
         word, entries: [{ pinyin: "", definitions: ["No definition found."] }],
@@ -189,6 +186,104 @@ function initializeCoverage() {
       loading.textContent = "Could not load dictionary. Close and try again.";
     }
   }
+
+  const coverageTab = document.getElementById("coverage-tab");
+  const dictionaryTab = document.getElementById("custom-dictionary-tab");
+  const dictionarySearch = document.getElementById("custom-dictionary-search");
+  const dictionaryMessage = document.getElementById("custom-dictionary-message");
+  const dictionaryEntries = document.getElementById("custom-dictionary-entries");
+  const findDictionaryWords = createVocabularySearch();
+  let generatedDictionary = null;
+  let dictionaryRequest = 0;
+
+  function renderDictionary() {
+    dictionaryEntries.replaceChildren();
+    if (!generatedDictionary) return;
+    const words = generatedDictionary.words || {};
+    const entries = Object.keys(words);
+    const matches = findDictionaryWords(entries, dictionarySearch.value, words);
+    dictionaryMessage.textContent = entries.length
+      ? `${number(matches.length)} / ${number(entries.length)} generated entries`
+      : "No custom dictionary entries have been generated for this item.";
+    if (generatedDictionary.status === "processing") {
+      dictionaryMessage.textContent += " Dictionary generation is still in progress.";
+    } else if (generatedDictionary.status === "error") {
+      dictionaryMessage.textContent += " Dictionary generation is incomplete. Retry on the Status page.";
+    }
+    const fragment = document.createDocumentFragment();
+    for (const word of matches) {
+      const raw = words[word];
+      const article = document.createElement("article");
+      article.className = "custom-dictionary-entry";
+      const heading = document.createElement("h3");
+      const wordButton = document.createElement("button");
+      wordButton.type = "button";
+      wordButton.className = "custom-dictionary-word";
+      wordButton.textContent = word;
+      wordButton.setAttribute("aria-label", `Look up ${word}`);
+      wordButton.addEventListener("click", () => void openLookup(word));
+      heading.appendChild(wordButton);
+      article.appendChild(heading);
+      for (const entry of raw.e || []) {
+        const pronunciation = document.createElement("p");
+        pronunciation.className = "custom-dictionary-pinyin";
+        pronunciation.textContent = entry.p || "";
+        article.appendChild(pronunciation);
+        article.appendChild(createDefinitionList(entry.d || [], word));
+      }
+      fragment.appendChild(article);
+    }
+    dictionaryEntries.appendChild(fragment);
+  }
+
+  async function showDictionary() {
+    const request = ++dictionaryRequest;
+    dictionaryMessage.textContent = "Loading custom dictionary…";
+    try {
+      const [, generated] = await Promise.all([loadDictionary(), loadItemDictionary()]);
+      if (request !== dictionaryRequest || !dialog.open) return;
+      generatedDictionary = generated;
+      replaceGeneratedDictionaryWords(generated.words);
+      renderDictionary();
+    } catch {
+      if (request === dictionaryRequest) {
+        dictionaryMessage.textContent = "Could not load custom dictionary. Switch tabs to try again.";
+      }
+    }
+  }
+
+  function selectTab(dictionary) {
+    coverageTab.setAttribute("aria-selected", String(!dictionary));
+    dictionaryTab.setAttribute("aria-selected", String(dictionary));
+    coverageTab.tabIndex = dictionary ? -1 : 0;
+    dictionaryTab.tabIndex = dictionary ? 0 : -1;
+    document.getElementById("coverage-panel").hidden = dictionary;
+    document.getElementById("custom-dictionary-panel").hidden = !dictionary;
+    if (dictionary) void showDictionary();
+    else if (data) {
+      render();
+      selectWindow(Number(position.value));
+    }
+  }
+
+  for (const tab of [coverageTab, dictionaryTab]) {
+    tab.addEventListener("click", () => selectTab(tab === dictionaryTab));
+    tab.addEventListener("keydown", event => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === "Home" ? coverageTab : event.key === "End" ? dictionaryTab
+        : tab === coverageTab ? dictionaryTab : coverageTab;
+      selectTab(next === dictionaryTab);
+      next.focus();
+    });
+  }
+  dictionarySearch.addEventListener("input", renderDictionary);
+  dictionaryEntries.addEventListener("click", event => {
+    const reference = event.target.closest(".dictionary-reference");
+    if (!reference || !dictionaryEntries.contains(reference)) return;
+    event.preventDefault();
+    void openLookup(reference.dataset.dictionaryReference, reference.dataset.referencePinyin);
+  });
 
   function svg(tag, attributes, text) {
     const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
@@ -383,13 +478,21 @@ function initializeCoverage() {
       event.stopPropagation();
       selectedButton = button;
       itemDictionary = null;
+      dictionaryRequest++;
+      generatedDictionary = null;
+      dictionarySearch.value = "";
+      dictionaryEntries.replaceChildren();
+      data = null;
+      selectTab(false);
+      document.getElementById("coverage-panel").scrollTop = 0;
+      document.getElementById("custom-dictionary-panel").scrollTop = 0;
       showAll = false;
       wholeItem = false;
       document.getElementById("coverage-item-title").textContent =
         button.dataset.coverageTitle;
       dialog.showModal();
       void loadDetail();
-      void loadItemDictionary();
+      void loadItemDictionary().catch(() => {});
     });
   }
   document
@@ -397,6 +500,7 @@ function initializeCoverage() {
     .addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => {
     requestNumber++;
+    dictionaryRequest++;
     lookup.close();
   });
   document.getElementById("coverage-lookup-close")

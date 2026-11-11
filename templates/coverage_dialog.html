@@ -1,32 +1,44 @@
 <link rel="stylesheet" href="{{ url_for('static', path='shared.css') }}?v=17" />
-<link rel="stylesheet" href="{{ url_for('static', path='coverage.css') }}?v=6" />
+<link rel="stylesheet" href="{{ url_for('static', path='coverage.css') }}?v=9" />
 <dialog id="coverage-dialog" aria-labelledby="coverage-title">
   <div class="coverage-heading">
     <h2 id="coverage-title">Vocabulary</h2>
     <button type="button" id="coverage-close" class="close-btn" aria-label="Close vocabulary coverage">×</button>
   </div>
   <p id="coverage-item-title"></p>
-  <p id="coverage-message" role="status" aria-live="polite"></p>
-  <div id="coverage-results" hidden>
-    <p id="coverage-summary"></p>
-    <svg id="coverage-chart" viewBox="0 0 640 250" role="img" aria-label="Known vocabulary across the text, from 0 to 100 percent"></svg>
-    <input id="coverage-position" type="range" min="0" max="0" value="0" step="1" aria-label="Section" />
-    <p id="coverage-section-title"></p>
-    <p id="coverage-section" aria-live="polite"></p>
-    <div class="coverage-word-scope" role="group" aria-label="Unknown words to display">
-      <button type="button" id="coverage-section-words" class="coverage-scope-button" aria-pressed="true">This section</button>
-      <button type="button" id="coverage-entire-words" class="coverage-scope-button" aria-pressed="false">Entire book</button>
+  <div class="coverage-tabs" role="tablist" aria-label="Vocabulary view">
+    <button type="button" id="coverage-tab" class="coverage-scope-button" role="tab" aria-selected="true" aria-controls="coverage-panel">Vocabulary coverage</button>
+    <button type="button" id="custom-dictionary-tab" class="coverage-scope-button" role="tab" aria-selected="false" aria-controls="custom-dictionary-panel" tabindex="-1">Custom dictionary</button>
+  </div>
+  <div id="coverage-panel" role="tabpanel" aria-labelledby="coverage-tab">
+    <p id="coverage-message" role="status" aria-live="polite"></p>
+    <div id="coverage-results" hidden>
+      <p id="coverage-summary"></p>
+      <svg id="coverage-chart" viewBox="0 0 640 250" role="img" aria-label="Known vocabulary across the text, from 0 to 100 percent"></svg>
+      <input id="coverage-position" type="range" min="0" max="0" value="0" step="1" aria-label="Section" />
+      <p id="coverage-section-title"></p>
+      <p id="coverage-section" aria-live="polite"></p>
+      <div class="coverage-word-scope" role="group" aria-label="Unknown words to display">
+        <button type="button" id="coverage-section-words" class="coverage-scope-button" aria-pressed="true">This section</button>
+        <button type="button" id="coverage-entire-words" class="coverage-scope-button" aria-pressed="false">Entire book</button>
+      </div>
+      <dl id="coverage-word-summary" class="coverage-help">
+        <dt>Words shown</dt><dd id="coverage-words-shown"></dd>
+        <dt>Occurrences shown</dt><dd id="coverage-occurrences-shown"></dd>
+      </dl>
+      <div id="coverage-words"></div>
+      <button type="button" id="coverage-show-all" class="coverage-show-all" hidden>Show all</button>
     </div>
-    <dl id="coverage-word-summary" class="coverage-help">
-      <dt>Words shown</dt><dd id="coverage-words-shown"></dd>
-      <dt>Occurrences shown</dt><dd id="coverage-occurrences-shown"></dd>
-    </dl>
-    <div id="coverage-words"></div>
-    <button type="button" id="coverage-show-all" class="coverage-show-all" hidden>Show all</button>
+  </div>
+  <div id="custom-dictionary-panel" role="tabpanel" aria-labelledby="custom-dictionary-tab" hidden>
+    <input id="custom-dictionary-search" type="search" aria-label="Search generated entries by Chinese, pinyin or meaning" placeholder="Chinese, pinyin or meaning" />
+    <p id="custom-dictionary-message" role="status" aria-live="polite"></p>
+    <div id="custom-dictionary-entries"></div>
   </div>
 </dialog>
 {% include "dictionary_dialog.html" %}
 <link rel="stylesheet" href="{{ url_for('static', path='known_words.css') }}?v=4" />
 <script src="{{ url_for('static', path='known_words.js') }}?v=10" defer></script>
 <script src="{{ url_for('static', path='dictionary.js') }}?v=14" defer></script>
-<script src="{{ url_for('static', path='coverage.js') }}?v=14" defer></script>
+<script src="{{ url_for('static', path='vocabulary_search.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', path='coverage.js') }}?v=18" defer></script>

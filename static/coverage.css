@@ -22,13 +22,34 @@
 }
 #coverage-dialog {
   width: min(720px, calc(100% - 24px));
+  box-sizing: border-box;
+  height: min(800px, calc(100dvh - 32px));
   max-height: calc(100dvh - 32px);
-  overflow: auto;
+  overflow: hidden;
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-base);
   color: var(--text-body);
+}
+#coverage-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+#coverage-dialog > .coverage-heading,
+#coverage-dialog > #coverage-item-title,
+#coverage-dialog > .coverage-tabs {
+  flex-shrink: 0;
+}
+#coverage-panel,
+#custom-dictionary-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Leave room for the 2px focus outline and its 3px offset. */
+  padding: 6px;
+  overscroll-behavior: contain;
 }
 #coverage-dialog::backdrop,
 #coverage-lookup::backdrop {
@@ -46,6 +67,8 @@
 }
 #coverage-item-title {
   overflow-wrap: anywhere;
+  max-height: 3em;
+  overflow: auto;
   color: var(--text-secondary);
   margin: 8px 0 16px;
 }
@@ -123,4 +146,66 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+.coverage-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.coverage-tabs [aria-selected="true"] {
+  border-color: var(--accent-interactive);
+  color: var(--accent-interactive);
+}
+#custom-dictionary-search {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  color: var(--text-body);
+  font: inherit;
+}
+#custom-dictionary-search:focus-visible,
+.coverage-tabs button:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 3px;
+}
+.custom-dictionary-entry {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.custom-dictionary-entry h3 {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+.custom-dictionary-pinyin {
+  margin: 4px 0;
+  color: var(--text-secondary);
+}
+.custom-dictionary-entry ul {
+  margin: 4px 0 0;
+  padding-left: 24px;
+}
+
+.custom-dictionary-word {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-interactive);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.custom-dictionary-word:hover {
+  text-decoration: underline;
+}
+.custom-dictionary-word:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 3px;
 }
