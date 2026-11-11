@@ -19,10 +19,6 @@
     }
     document.querySelectorAll("[data-local-known-word]").forEach(updateButton);
     if (notify) {
-      try {
-        sessionStorage.removeItem("mogao:coverage:books");
-        sessionStorage.removeItem("mogao:coverage:videos");
-      } catch {}
       window.dispatchEvent(new CustomEvent("mogao:known-words-changed"));
     }
     return true;

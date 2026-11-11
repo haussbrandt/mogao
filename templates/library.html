@@ -89,6 +89,8 @@
         <div
           class="book-card"
           data-sort-card
+          data-coverage-revision="{{ book.coverage_revision }}"
+          data-coverage="{{ book.coverage if book.coverage is not none else '' }}"
           data-title="{{ book.title }}"
           data-added="{{ book.processed_at }}"
           data-read="{{ book.last_read_time }}"
@@ -140,7 +142,7 @@
             ') }} mined cards<br />
             {% endif %}
             {% if anki_enabled %}
-            <button type="button" class="coverage-button" data-coverage-id="{{ book.id }}" data-coverage-title="{{ book.title }}" data-dictionary-url="/api/book-dict/{{ book.id }}" title="Vocabulary coverage">… known</button>
+            <button type="button" class="coverage-button" data-coverage-id="{{ book.id }}" data-coverage-title="{{ book.title }}" data-dictionary-url="/api/book-dict/{{ book.id }}" title="Vocabulary coverage">{% if book.coverage is not none %}{{ '%.1f' | format(book.coverage) }}% known{% else %}Analysing…{% endif %}</button>
             {% endif %}
           </div>
         </div>

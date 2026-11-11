@@ -114,6 +114,8 @@
         <div
           class="video-card"
           data-sort-card
+          data-coverage-revision="{{ video.coverage_revision }}"
+          data-coverage="{{ video.coverage if video.coverage is not none else '' }}"
           data-title="{{ video.title }}"
           data-added="{{ video.processed_at }}"
           data-watch="{{ video.last_watch_time }}"
@@ -153,7 +155,7 @@
             ') }} mined cards<br />
             {% endif %}
             {% if anki_enabled %}
-            <button type="button" class="coverage-button" data-coverage-id="{{ video.id }}" data-coverage-title="{{ video.title }}" data-dictionary-url="{{ video_base_path }}/api/video-dict/{{ video.id }}" title="Vocabulary coverage">… known</button>
+            <button type="button" class="coverage-button" data-coverage-id="{{ video.id }}" data-coverage-title="{{ video.title }}" data-dictionary-url="{{ video_base_path }}/api/video-dict/{{ video.id }}" title="Vocabulary coverage">{% if video.coverage is not none %}{{ '%.1f' | format(video.coverage) }}% known{% else %}Analysing…{% endif %}</button>
             {% endif %}
           </div>
         </div>

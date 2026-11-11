@@ -34,7 +34,14 @@ from books.library import (
 )
 from core.config import settings
 from videos.playback_audio import manage_audio_streams
-from core.coverage import manage_coverage_jobs, refresh_coverage, router as coverage_router
+from core.coverage import (
+    manage_coverage_jobs,
+    refresh_coverage,
+    remember_created_word,
+    request_library_sync,
+    router as coverage_router,
+    saved_library,
+)
 from core.dependencies import postprocessor, templates
 from core.middleware import AuthMiddleware, PlaybackGZipMiddleware
 from core.known_words import load_local_vocabulary, router as known_words_router
@@ -233,6 +240,7 @@ async def create_new_anki_card(data: NewCardRequest):
     if data.replace_suspended:
         await delete_suspended_anki_word(data.word)
     await call_anki_async("addNote", note=note)
+    remember_created_word(data.word)
     if settings.postprocessing.text.enabled or settings.postprocessing.audio.enabled:
         asyncio.create_task(postprocessor.check_and_process())
     try:
@@ -296,10 +304,17 @@ async def library_view(request: Request):
                     }
                 )
 
+    coverage = saved_library("books") if settings.anki.enabled else {}
+    for item in books:
+        score = coverage.get(item["id"], {})
+        item["coverage"] = score.get("coverage")
+        item["coverage_revision"] = score.get("revision", "")
+
     preferences = load_settings()
     current_sort = preferences.get("sort_order", "title")
     if not settings.anki.enabled and current_sort in {"coverage", "coverage_rev"}:
         current_sort = "title"
+    request_library_sync()
     return templates.TemplateResponse(
         request,
         "library.html",

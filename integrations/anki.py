@@ -13,6 +13,7 @@ import ffmpeg
 import requests
 from elevenlabs.client import ElevenLabs
 
+from core import coverage
 from core.config import AnkiKnownSource, settings
 from core.paths import named_temp_path
 from integrations.llm_client import LLMResponseError, generate_json
@@ -697,6 +698,8 @@ def _get_anki_result(
         raise RuntimeError(
             f"AnkiConnect action {action!r} returned an invalid response"
         )
+    if action == "sync":
+        coverage.request_anki_refresh()
     return payload["result"]
 
 
@@ -819,9 +822,11 @@ async def delete_suspended_anki_word(word: str) -> None:
         await call_anki_async("deleteNotes", notes=note_ids)
 
 
-def get_anki_word_sets() -> tuple[set[str], set[str]]:
+def get_anki_word_sets(*, sync: bool = True) -> tuple[set[str], set[str]]:
     """Return words in Mogao's destination deck and all words considered known."""
-    _get_anki_result("sync", request_timeout=None)
+    revision = coverage.anki_revision()
+    if sync:
+        _get_anki_result("sync", request_timeout=None)
 
     deck_names = _get_anki_result("deckNames")
     if not isinstance(deck_names, list):
@@ -848,6 +853,7 @@ def get_anki_word_sets() -> tuple[set[str], set[str]]:
             )
         )
 
+    coverage.remember_anki_words(known_words, expected_revision=revision)
     return deck_words, known_words
 
 

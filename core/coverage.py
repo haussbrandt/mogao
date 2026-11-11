@@ -6,6 +6,7 @@ if word boundaries, extraction, or classification rules change.
 """
 
 import asyncio
+import gzip
 import json
 import logging
 import math
@@ -16,7 +17,7 @@ import sys
 import tempfile
 import threading
 import unicodedata
-from collections import Counter, OrderedDict
+from collections import Counter
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -25,15 +26,25 @@ from uuid import UUID, uuid4
 from weakref import WeakValueDictionary
 
 from bs4 import BeautifulSoup, Comment
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 
+from core import known_words
 from core.config import settings
-from core.known_words import load_local_vocabulary
 from core.paths import get_book_path, get_video_path
-from integrations.anki import get_anki_word_sets
+from integrations import anki
 
 logger = logging.getLogger(__name__)
+DETAIL_FILENAME = "coverage-result.json.gz"
+_lock = threading.RLock()
+_state_path = None
+_state = None
+_dirty = threading.Event()
+_sync = threading.Event()
+_library_sync = threading.Event()
+_syncing = False
+_running = False
+_anki_revision = 0
 VOCABULARY_STATS_VERSION = 1
 WINDOW_SIZE = 1000
 BASE_DICTIONARY = Path(__file__).resolve().parent.parent / "static" / "dict.json"
@@ -150,7 +161,9 @@ def subtitle_sections(text: str):
         yield label, [re.sub(r"<[^>]+>", "", " ".join(lines[2:]))]
 
 
-def build_vocabulary_stats(sections, dictionary: dict, window_size: int = WINDOW_SIZE) -> dict:
+def build_vocabulary_stats(
+    sections, dictionary: dict, window_size: int = WINDOW_SIZE
+) -> dict:
     counts, current = Counter(), Counter()
     windows, markers, oov = [], [], set()
     total = 0
@@ -185,50 +198,50 @@ def build_vocabulary_stats(sections, dictionary: dict, window_size: int = WINDOW
     }
 
 
-def score_vocabulary_stats(vocabulary_stats: dict, known: set[str], *, detail: bool = False) -> dict:
+def score_vocabulary_stats(vocabulary_stats: dict, known: set[str]) -> dict:
+    """Score every section directly into the shared word-table format."""
     oov = set(vocabulary_stats["oov"])
-    understood = {
-        word
-        for word in vocabulary_stats["counts"]
-        if word in known or (word not in oov and compositionally_known(word, known))
-    }
+    counts = vocabulary_stats["counts"]
+    unknown = sorted(
+        (
+            word
+            for word in counts
+            if word not in known
+            and (word in oov or not compositionally_known(word, known))
+        ),
+        key=lambda word: (-counts[word], word),
+    )
+    ids = {word: index for index, word in enumerate(unknown)}
 
     def score(counts):
-        total = sum(counts.values())
-        unfamiliar = sum(
-            count for word, count in counts.items() if word not in understood
+        words = sorted(
+            (word for word in counts if word in ids),
+            key=lambda word: (-counts[word], word),
         )
+        total = sum(counts.values())
+        unfamiliar = sum(counts[word] for word in words)
         return {
             "total": total,
             "unfamiliar": unfamiliar,
             "coverage": 100 * (total - unfamiliar) / total if total else None,
-            "unfamiliar_per_1000": 1000 * unfamiliar / total if total else None,
-            "unknown_words": sum(word not in understood for word in counts),
-            "unrecognized": sum(count for word, count in counts.items() if word in oov),
+            "unknown_words": len(words),
+            "words": [value for word in words for value in (ids[word], counts[word])],
         }
 
     result = {
         "status": "ready" if vocabulary_stats["total"] else "empty",
-        **score(vocabulary_stats["counts"]),
+        **score(counts),
+        "vocabulary": [[word, int(word in oov)] for word in unknown],
+        "windows": [],
+        "markers": vocabulary_stats["markers"],
+        "window_size": vocabulary_stats["window_size"],
     }
-    if detail:
-        result["windows"] = []
-        start = 0
-        for counts in vocabulary_stats["windows"]:
-            entry = score(counts)
-            entry.update(start=start, end=start + entry["total"])
-            entry["words"] = sorted(
-                (
-                    {"word": word, "count": count, "unrecognized": word in oov}
-                    for word, count in counts.items()
-                    if word not in understood
-                ),
-                key=lambda item: (-item["count"], item["word"]),
-            )
-            result["windows"].append(entry)
-            start = entry["end"]
-        result["markers"] = vocabulary_stats["markers"]
-        result["window_size"] = vocabulary_stats["window_size"]
+    start = 0
+    for counts in vocabulary_stats["windows"]:
+        entry = score(counts)
+        entry.update(start=start, end=start + entry["total"])
+        result["windows"].append(entry)
+        start = entry["end"]
     return result
 
 
@@ -359,9 +372,7 @@ def _build_or_load_vocabulary_stats(
             delete=False,
         ) as file:
             temporary = Path(file.name)
-            json.dump(
-                vocabulary_stats, file, ensure_ascii=False, separators=(",", ":")
-            )
+            json.dump(vocabulary_stats, file, ensure_ascii=False, separators=(",", ":"))
         if _input_signature(source, generated) != before:
             return None, "pending"
         os.replace(temporary, destination)
@@ -396,7 +407,9 @@ def _stale_items():
                 if _analysis_status(kind, item_id) == "analysing":
                     yield kind, item_id
             except Exception:
-                logger.exception("Could not inspect vocabulary for %s %s", kind, item_id)
+                logger.exception(
+                    "Could not inspect vocabulary for %s %s", kind, item_id
+                )
 
 
 class CoverageJobs:
@@ -424,7 +437,9 @@ class CoverageJobs:
     async def _analyse(self, key):
         if self.process is None or self.process.returncode is not None:
             self.process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "core.coverage",
+                sys.executable,
+                "-m",
+                "core.coverage",
                 cwd=Path(__file__).resolve().parent.parent,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -449,10 +464,15 @@ class CoverageJobs:
                 if await asyncio.to_thread(_analysis_status, *key) == "analysing":
                     await self._analyse(key)
                     # Changed inputs are deliberately not saved by the builder.
-                    retry = await asyncio.to_thread(_analysis_status, *key) == "analysing"
+                    retry = (
+                        await asyncio.to_thread(_analysis_status, *key) == "analysing"
+                    )
             except Exception:
                 logger.exception("Could not analyse vocabulary for %s %s", *key)
+            else:
+                vocabulary_changed()
             finally:
+                # Failures wait for a fresh rescan instead of retriggering themselves.
                 self.pending.discard(key)
                 self.running = None
                 if retry or self.requested_again:
@@ -480,9 +500,281 @@ async def refresh_coverage(kind: str, item_id: str) -> None:
         _coordinator.enqueue(kind, item_id)
 
 
+def _load():
+    global _state, _state_path
+    path = settings.paths.library / "coverage-state.json"
+    if _state_path != path or _state is None:
+        _state_path = path
+        try:
+            _state = json.loads(path.read_text(encoding="utf-8"))
+            if _state.get("version") != 1:
+                raise ValueError("Old coverage cache")
+        except (OSError, ValueError, AttributeError):
+            _state = {"version": 1, "anki": None, "items": {}}
+    return _state
+
+
+def _write(path, payload):
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=".coverage-", delete=False
+        ) as file:
+            temporary = Path(file.name)
+            file.write(payload)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def saved_detail(kind, item_id, revision):
+    """Read the payload and its revision together while the worker publishes it."""
+
+    folder, _, _ = item_paths(kind, item_id)
+    with _lock:
+        entry = _load()["items"].get(f"{kind}/{item_id}")
+        try:
+            payload = (folder / DETAIL_FILENAME).read_bytes() if entry else None
+        except FileNotFoundError:
+            payload = None
+        if payload is None:
+            vocabulary_changed()
+            return None, False
+        return payload, revision is not None and revision == entry["summary"][
+            "revision"
+        ]
+
+
+def vocabulary_changed():
+    _dirty.set()
+
+
+def request_anki_refresh():
+    _sync.set()
+
+
+def request_library_sync():
+    """Rescan content on entry and share an in-flight sync without waiting."""
+    if settings.anki.enabled:
+        # Content can change even when Anki returns the same known-word set.
+        vocabulary_changed()
+        with _lock:
+            if not _syncing:
+                _library_sync.set()
+
+
+def anki_revision():
+    with _lock:
+        return _anki_revision
+
+
+def remember_anki_words(words, *, expected_revision=None):
+    global _anki_revision
+    with _lock:
+        if expected_revision is not None and expected_revision != _anki_revision:
+            request_anki_refresh()
+            return
+        state = _load()
+        words = sorted(set(words))
+        if state["anki"] != words:
+            _anki_revision += 1
+            state["anki"] = words
+            vocabulary_changed()
+
+
+def remember_created_word(word):
+    with _lock:
+        words = _load()["anki"]
+        if words is None:
+            request_anki_refresh()
+        else:
+            remember_anki_words(set(words) | {word})
+
+
+def saved_library(kind):
+    with _lock:
+        return {
+            key.split("/", 1)[1]: entry["summary"]
+            for key, entry in _load()["items"].items()
+            if key.startswith(kind + "/")
+        }
+
+
+def library_result(kind):
+    local = known_words.load_local_vocabulary()
+    return {
+        "items": saved_library(kind),
+        "local_words": local["words"],
+        "local_revision": local["revision"],
+        "refreshing": _dirty.is_set() or _running,
+    }
+
+
+def _dependencies(stats):
+
+    words = set(stats["counts"])
+    oov = set(stats["oov"])
+    for word in stats["counts"]:
+        if word in oov or len(word) < 2:
+            continue
+        if word.endswith("们"):
+            words.add(word[:-1])
+        elif word.startswith("不") and word not in BU_IDIOMS:
+            words.add(word[1:])
+    return sorted(words)
+
+
+def update_results() -> list[tuple[str, str]]:
+    """Update affected scores and return items that need vocabulary analysis."""
+
+    local = known_words.load_local_vocabulary()
+    with _lock:
+        state = _load()
+        if state["anki"] is None:
+            return []
+        known = set(state["anki"]) | set(local["words"])
+        previous = dict(state["items"])
+    entries = {}
+    missing_analysis = []
+    roots = [("books", settings.paths.library, "book.pkl")]
+    if settings.video.enabled:
+        roots.append(("videos", settings.paths.video_library, "video.pkl"))
+    for kind, root, metadata in roots:
+        if not root.is_dir():
+            continue
+        for folder in root.iterdir():
+            try:
+                item_id = str(UUID(folder.name))
+            except ValueError:
+                continue
+            if not (folder / metadata).is_file():
+                continue
+            key = f"{kind}/{item_id}"
+            old = previous.get(key, {})
+            try:
+                _, source, generated = item_paths(kind, item_id)
+                signature = _input_signature(source, generated)
+                relevant = sorted(known.intersection(old.get("dependencies", [])))
+                if (
+                    old.get("signature") == signature
+                    and old.get("known") == relevant
+                    and (folder / DETAIL_FILENAME).is_file()
+                ):
+                    entries[key] = old
+                    continue
+                stats, status = ensure_vocabulary_stats(kind, item_id, build=False)
+                if status == "analysing":
+                    missing_analysis.append((kind, item_id))
+                detail = (
+                    score_vocabulary_stats(stats, known)
+                    if stats
+                    else {"status": status}
+                )
+                revision = str(uuid4())
+                detail["revision"] = revision
+                dependencies = _dependencies(stats) if stats else []
+                summary = {
+                    k: v
+                    for k, v in detail.items()
+                    if k
+                    not in {"vocabulary", "words", "windows", "markers", "window_size"}
+                }
+                entry = {
+                    "summary": summary,
+                    "dependencies": dependencies,
+                    "known": sorted(known.intersection(dependencies)),
+                    # Pending analysis must be revisited when its worker finishes.
+                    "signature": signature if stats else None,
+                }
+                if _input_signature(source, generated) != signature:
+                    vocabulary_changed()
+                    if old:
+                        entries[key] = old
+                    continue
+                payload = gzip.compress(
+                    json.dumps(
+                        detail,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ).encode(),
+                    compresslevel=6,
+                    mtime=0,
+                )
+                with _lock:
+                    _write(folder / DETAIL_FILENAME, payload)
+                    state["items"][key] = entry
+                entries[key] = entry
+            except Exception:
+                logger.exception("Could not update saved coverage for %s", key)
+                if old:
+                    entries[key] = {**old, "signature": None}
+    with _lock:
+        state["items"] = entries
+        _state_path.parent.mkdir(parents=True, exist_ok=True)
+        _write(
+            _state_path,
+            json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode(),
+        )
+
+    return missing_analysis
+
+
+async def run_updates():
+
+    global _running
+    vocabulary_changed()
+    while True:
+        await asyncio.sleep(0.2)
+        if not _dirty.is_set() or not settings.anki.enabled:
+            continue
+        _running = True
+        _dirty.clear()
+        work = asyncio.create_task(asyncio.to_thread(update_results))
+        try:
+            missing_analysis = await asyncio.shield(work)
+            # The queue belongs to this event loop, not the scoring thread.
+            for kind, item_id in missing_analysis:
+                await refresh_coverage(kind, item_id)
+        except asyncio.CancelledError:
+            # A thread cannot be cancelled: finish its atomic saves before shutdown.
+            await work
+            raise
+        except Exception:
+            logger.exception("Could not save vocabulary coverage")
+        finally:
+            _running = False
+
+
+async def refresh_anki():
+    global _syncing
+    request_anki_refresh()
+    while True:
+        if settings.anki.enabled and (_sync.is_set() or _library_sync.is_set()):
+            with _lock:
+                _syncing = _library_sync.is_set()
+                _library_sync.clear()
+                _sync.clear()
+            try:
+                if _syncing:
+                    await anki.call_anki_async("sync")
+                    # Sync completion requests a vocabulary read; this job supplies it.
+                    _sync.clear()
+                await asyncio.to_thread(anki.get_anki_word_sets, sync=False)
+            except Exception:
+                logger.exception("Could not refresh vocabulary; keeping saved coverage")
+            finally:
+                with _lock:
+                    _syncing = False
+        await asyncio.sleep(1)
+
+
 @asynccontextmanager
 async def manage_coverage_jobs():
     global _coordinator
+
+    updates = asyncio.create_task(run_updates())
+    vocabulary = asyncio.create_task(refresh_anki())
     coordinator = CoverageJobs()
     _coordinator = coordinator
     runner = asyncio.create_task(coordinator.run())
@@ -491,128 +783,64 @@ async def manage_coverage_jobs():
         yield
     finally:
         _coordinator = None
+        updates.cancel()
+        vocabulary.cancel()
         scan.cancel()
         runner.cancel()
-        await asyncio.gather(scan, runner, return_exceptions=True)
+        await asyncio.gather(scan, runner, updates, vocabulary, return_exceptions=True)
         await coordinator.stop()
 
 
 router = APIRouter(prefix="/api/coverage")
 Kind = Literal["books", "videos"]
-_snapshots: OrderedDict[str, frozenset[str]] = OrderedDict()
-_snapshot_lock = threading.Lock()
-SNAPSHOT_LIMIT = 16
-_latest_snapshot: str | None = None
-_refresh_lock = threading.Lock()
 
 
-def _known_words(kind: str, snapshot: UUID | None = None, *, refresh=False):
-    global _latest_snapshot
+def _check_enabled(kind):
     if kind == "videos" and not settings.video.enabled:
         raise HTTPException(404, "Videos are disabled")
     if not settings.anki.enabled:
         raise HTTPException(409, "Enable Anki to see your vocabulary coverage.")
-    if snapshot is not None:
-        with _snapshot_lock:
-            words = _snapshots.get(str(snapshot))
-            if words is None:
-                raise HTTPException(
-                    409, "Vocabulary snapshot expired. Refresh vocabulary."
-                )
-            _snapshots.move_to_end(str(snapshot))
-        return str(snapshot), words, False
-    with _snapshot_lock:
-        previous = _latest_snapshot
-        if not refresh and previous in _snapshots:
-            return previous, _snapshots[previous], True
-    # Concurrent page loads share a single Anki sync.
-    with _refresh_lock:
-        with _snapshot_lock:
-            if _latest_snapshot != previous and _latest_snapshot in _snapshots:
-                return _latest_snapshot, _snapshots[_latest_snapshot], False
-        try:
-            words = frozenset(get_anki_word_sets()[1])
-        except Exception:
-            logger.exception("Could not load known vocabulary for coverage")
-            raise HTTPException(503, "Could not refresh known words from Anki. Try again.")
-        token = str(uuid4())
-        with _snapshot_lock:
-            _snapshots[token] = words
-            _latest_snapshot = token
-            while len(_snapshots) > SNAPSHOT_LIMIT:
-                _snapshots.popitem(last=False)
-        return token, words, False
-
-
-def _score(kind: str, item_id: str, known: set[str], *, detail=False):
-    try:
-        vocabulary_stats, status = ensure_vocabulary_stats(kind, item_id, build=False)
-        return (
-            score_vocabulary_stats(vocabulary_stats, known, detail=detail)
-            if vocabulary_stats
-            else {"status": status}
-        )
-    except Exception:
-        logger.exception("Could not score %s %s", kind, item_id)
-        return {"status": "error"}
-
-
-def _library_scores(kind: str, snapshot: UUID | None = None, refresh=False):
-    token, anki_words, cached = _known_words(kind, snapshot, refresh=refresh)
-    local = load_local_vocabulary()
-    known = anki_words | set(local["words"])
-    root = settings.paths.library if kind == "books" else settings.paths.video_library
-    result = {}
-    if root.is_dir():
-        for folder in root.iterdir():
-            try:
-                item_id = str(UUID(folder.name))
-            except ValueError:
-                continue
-            metadata = folder / ("book.pkl" if kind == "books" else "video.pkl")
-            if metadata.is_file():
-                result[item_id] = _score(kind, item_id, known)
-    return {
-        "snapshot": token,
-        "local_words": local["words"],
-        "local_revision": local["revision"],
-        "items": result,
-        "cached_vocabulary": cached,
-    }
 
 
 @router.get("/{kind}")
-async def library_coverage(
-    kind: Kind,
-    snapshot: UUID | None = None,
-    refresh: bool = False,
-):
-    result = await asyncio.to_thread(_library_scores, kind, snapshot, refresh)
-    for item_id, score in result["items"].items():
-        if score["status"] == "analysing":
-            await refresh_coverage(kind, item_id)
-    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+def library_coverage(kind: Kind):
+
+    _check_enabled(kind)
+    return JSONResponse(library_result(kind), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/{kind}/{item_id}")
-async def item_coverage(kind: Kind, item_id: UUID, snapshot: UUID | None = None):
-    def load():
-        folder, _, _ = item_paths(kind, str(item_id))
-        if not folder.is_dir():
-            raise HTTPException(404, "Item not found")
-        token, anki_words, _ = _known_words(kind, snapshot)
-        local = load_local_vocabulary()
-        return {
-            **_score(kind, str(item_id), anki_words | set(local["words"]), detail=True),
-            "snapshot": token,
-            "local_words": local["words"],
-            "local_revision": local["revision"],
-        }
+def item_coverage(
+    kind: Kind, item_id: UUID, request: Request, revision: UUID | None = None
+):
 
-    result = await asyncio.to_thread(load)
-    if result["status"] == "analysing":
-        await refresh_coverage(kind, str(item_id))
-    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+    _check_enabled(kind)
+    folder, _, _ = item_paths(kind, str(item_id))
+    if not folder.is_dir():
+        raise HTTPException(404, "Item not found")
+    payload, current = saved_detail(
+        kind, str(item_id), str(revision) if revision else None
+    )
+    if payload is None:
+        return JSONResponse(
+            {"status": "analysing"}, headers={"Cache-Control": "no-store"}
+        )
+    headers = {
+        "Cache-Control": "private, max-age=31536000, immutable"
+        if current
+        else "no-store",
+        "Vary": "Accept-Encoding",
+    }
+    accepted = re.search(
+        r"(?:^|,)\s*gzip\s*(?:;\s*q=(0(?:\.\d+)?|1(?:\.0+)?))?\s*(?:,|$)",
+        request.headers.get("accept-encoding", ""),
+        re.IGNORECASE,
+    )
+    if accepted and float(accepted.group(1) or "1") > 0:
+        headers["Content-Encoding"] = "gzip"
+    else:
+        payload = gzip.decompress(payload)
+    return Response(payload, media_type="application/json", headers=headers)
 
 
 def main():

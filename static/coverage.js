@@ -1,4 +1,80 @@
-document.addEventListener("DOMContentLoaded", () => {
+// Complete, revisioned datasets use the browser's private HTTP cache across visits.
+// Keep word lists compact in memory too; only the displayed words need objects.
+class CoverageData {
+  constructor(kind) {
+    this.kind = kind;
+    this.revisions = new Map();
+    this.details = new Map();
+    this.pending = new Map();
+  }
+
+  setRevisions(items) {
+    for (const [id, item] of Object.entries(items)) {
+      this.revisions.set(id, item.revision);
+    }
+    for (const id of this.details.keys()) {
+      if (!(id in items)) this.details.delete(id);
+    }
+  }
+
+  peek(id) {
+    const data = this.details.get(id);
+    return data?.revision === this.revisions.get(id) ? data : null;
+  }
+
+  async load(id) {
+    const cached = this.peek(id);
+    if (cached) return cached;
+    const revision = this.revisions.get(id);
+    const key = `${id}:${revision || ""}`;
+    if (this.pending.has(key)) return this.pending.get(key);
+    const request = (async () => {
+      const query = revision ? `?revision=${encodeURIComponent(revision)}` : "";
+      const response = await fetch(`/api/coverage/${this.kind}/${id}${query}`);
+      if (!response.ok) throw new Error("Could not load vocabulary coverage.");
+      const result = await response.json();
+      // A vocabulary update during the download must not restore old results.
+      if (this.revisions.get(id) !== revision) return this.load(id);
+      if (result.status === "ready" || result.status === "empty") {
+        this.revisions.set(id, result.revision);
+        this.details.set(id, result);
+      }
+      return result;
+    })();
+    this.pending.set(key, request);
+    try {
+      return await request;
+    } finally {
+      this.pending.delete(key);
+    }
+  }
+
+  async preload(ids) {
+    const queue = [...ids];
+    const worker = async () => {
+      while (queue.length) {
+        const id = queue.shift();
+        try {
+          await this.load(id);
+        } catch {} // A click or the next refresh retries failed downloads.
+      }
+    };
+    await Promise.all([worker(), worker()]);
+  }
+
+  words(data, entry, all) {
+    const pairs = entry.words;
+    const limit = all ? pairs.length : Math.min(20, pairs.length);
+    const words = [];
+    for (let index = 0; index < limit; index += 2) {
+      const [word, unrecognized] = data.vocabulary[pairs[index]];
+      words.push({ word, count: pairs[index + 1], unrecognized: !!unrecognized });
+    }
+    return words;
+  }
+}
+
+function initializeCoverage() {
   const grid = document.querySelector("[data-coverage-kind]");
   const dialog = document.getElementById("coverage-dialog");
   if (!grid || !dialog || !window.LocalVocabulary) return;
@@ -27,17 +103,12 @@ document.addEventListener("DOMContentLoaded", () => {
   let requestNumber = 0;
   let selectionLine = null;
   let chartWidth = 640;
-  const details = new Map();
-  let snapshot = null;
-  let localRevision = null;
-  let libraryReady = Promise.resolve();
+  const coverageData = new CoverageData(kind);
+  let preloading = null;
   let libraryRequest = 0;
-  let libraryItems = {};
   let analysisPoll = null;
-  const cacheKey = `mogao:coverage:${kind}`;
   let showAll = false;
   let wholeItem = false;
-  let wholeItemWords = [];
   const showAllButton = document.getElementById("coverage-show-all");
   const sectionWordsButton = document.getElementById("coverage-section-words");
   const wholeItemWordsButton = document.getElementById("coverage-entire-words");
@@ -49,11 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const response = await fetch(url, { cache: "no-store" });
     const body = await response.json();
     if (!response.ok) {
-      const error = new Error(
-        body.detail || "Could not load vocabulary coverage.",
-      );
-      error.status = response.status;
-      throw error;
+      throw new Error(body.detail || "Could not load vocabulary coverage.");
     }
     return body;
   }
@@ -75,12 +142,10 @@ document.addEventListener("DOMContentLoaded", () => {
     button.setAttribute("aria-label", `${button.textContent} · Open vocabulary coverage`);
   }
 
-  function showScores(items, cached = false) {
+  function showScores(items) {
     for (const button of buttons) {
       const score = items[button.dataset.coverageId];
-      if (cached && !score) continue;
-      updateButton(button, score || { status: "missing" });
-      if (cached) button.title = "Saved coverage · Updating…";
+      updateButton(button, score || { status: "analysing" });
     }
     grid.dispatchEvent(new Event("coverage:updated"));
   }
@@ -151,21 +216,22 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("coverage-section").textContent =
       `${number(entry.coverage)}% known · ${number(entry.unfamiliar)} / ${number(entry.total)} unfamiliar occurrences`;
     position.setAttribute("aria-valuetext", `${label}, words ${entry.start + 1}–${entry.end}`);
-    const wordEntry = wholeItem
-      ? { words: wholeItemWords, unfamiliar: data.unfamiliar }
-      : entry;
+    const coordinate = x((entry.start + entry.end) / 2);
+    selectionLine.setAttribute("x1", coordinate);
+    selectionLine.setAttribute("x2", coordinate);
+    const wordEntry = wholeItem ? data : entry;
     const words = document.getElementById("coverage-words");
     words.replaceChildren();
-    const shownWords = showAll ? wordEntry.words : wordEntry.words.slice(0, 10);
+    const shownWords = coverageData.words(data, wordEntry, showAll);
     const shownOccurrences = shownWords.reduce(
       (sum, item) => sum + item.count,
       0,
     );
     document.getElementById("coverage-words-shown").textContent =
-      `${number(shownWords.length)} / ${number(wordEntry.words.length)}`;
+      `${number(shownWords.length)} / ${number(wordEntry.words.length / 2)}`;
     document.getElementById("coverage-occurrences-shown").textContent =
       `${number(shownOccurrences)} / ${number(wordEntry.unfamiliar)}`;
-    showAllButton.hidden = wordEntry.words.length <= 10;
+    showAllButton.hidden = wordEntry.words.length <= 20;
     showAllButton.textContent = showAll ? "Show top 10" : "Show all";
     sectionWordsButton.setAttribute("aria-pressed", String(!wholeItem));
     wholeItemWordsButton.setAttribute("aria-pressed", String(wholeItem));
@@ -180,9 +246,6 @@ document.addEventListener("DOMContentLoaded", () => {
       chip.addEventListener("click", () => void openLookup(item.word));
       words.appendChild(chip);
     }
-    const coordinate = x((entry.start + entry.end) / 2);
-    selectionLine.setAttribute("x1", coordinate);
-    selectionLine.setAttribute("x2", coordinate);
   }
 
   function render() {
@@ -246,47 +309,37 @@ document.addEventListener("DOMContentLoaded", () => {
     position.disabled = data.windows.length === 1;
     document.getElementById("coverage-summary").textContent =
       `${number(data.coverage)}% known · ${number(data.unknown_words)} unfamiliar words`;
-    selectWindow(0);
   }
 
-  async function loadLibrary(fresh = false) {
+  function warmDetails() {
+    if (preloading) return;
+    // Follow the visible sort order, keeping two background downloads active.
+    const ids = [...grid.querySelectorAll("[data-coverage-id]")]
+      .map((button) => button.dataset.coverageId)
+      .filter((id) => coverageData.revisions.get(id) && !coverageData.peek(id));
+    if (!ids.length) return;
+    preloading = coverageData.preload(ids).finally(() => { preloading = null; });
+  }
+
+  async function loadLibrary() {
     const request = ++libraryRequest;
     clearTimeout(analysisPoll);
-    let result;
     try {
-      result = await fetchJson(
-        `/api/coverage/${kind}${fresh ? "?refresh=true" : snapshot ? `?snapshot=${snapshot}` : ""}`,
-      );
+      const result = await fetchJson(`/api/coverage/${kind}`);
+      if (request !== libraryRequest) return;
+      window.LocalVocabulary.setWords(result.local_words, result.local_revision);
+      showScores(result.items);
+      coverageData.setRevisions(result.items);
+      warmDetails();
+      const selectedId = selectedButton?.dataset.coverageId;
+      if (dialog.open && (!data || data.revision !== result.items[selectedId]?.revision)) {
+        void loadDetail(true);
+      }
+      analysisPoll = setTimeout(() => void loadLibrary(), result.refreshing ? 500 : 5000);
     } catch (error) {
-      if (error.status !== 409 || fresh || !snapshot) throw error;
-      result = await fetchJson(`/api/coverage/${kind}`);
+      for (const button of buttons) button.title = error.message;
+      analysisPoll = setTimeout(() => void loadLibrary(), 5000);
     }
-    if (request !== libraryRequest) return;
-    const changed = snapshot && (
-      snapshot !== result.snapshot || localRevision !== result.local_revision
-    );
-    snapshot = result.snapshot;
-    if (!window.LocalVocabulary.setWords(result.local_words, result.local_revision))
-      return;
-    localRevision = result.local_revision;
-    const selectedId = selectedButton?.dataset.coverageId;
-    const analysisFinished = libraryItems[selectedId]?.status === "analysing" &&
-      result.items[selectedId] && result.items[selectedId].status !== "analysing";
-    libraryItems = result.items;
-    showScores(result.items);
-    try {
-      sessionStorage.setItem(cacheKey, JSON.stringify(result.items));
-    } catch {} // Scores still work when browser storage is unavailable.
-    if (changed) {
-      details.clear();
-      if (dialog.open) void loadDetail(true);
-    } else if (dialog.open && !data && analysisFinished) {
-      void loadDetail(true);
-    }
-    if (Object.values(result.items).some((score) => score.status === "analysing")) {
-      analysisPoll = setTimeout(() => loadLibrary().catch(() => {}), 1500);
-    }
-    return result;
   }
 
   async function loadDetail(preservePosition = false) {
@@ -301,36 +354,9 @@ document.addEventListener("DOMContentLoaded", () => {
       message.textContent = "Loading vocabulary coverage…";
     }
     try {
-      await libraryReady;
-      if (currentRequest !== requestNumber) return;
       const id = button.dataset.coverageId;
-      let score = details.get(id);
-      if (!score) {
-        const url = () => `/api/coverage/${kind}/${id}?snapshot=${snapshot}`;
-        try {
-          score = await fetchJson(url());
-        } catch (error) {
-          if (error.status !== 409) throw error;
-          details.clear();
-          libraryReady = loadLibrary(true);
-          await libraryReady;
-          score = await fetchJson(url());
-        }
-      }
+      const score = coverageData.peek(id) || await coverageData.load(id);
       if (currentRequest !== requestNumber) return;
-      const newerVocabulary = score.local_revision > (
-        window.MOGAO_CONFIG?.localKnownRevision ?? localRevision
-      );
-      if (!window.LocalVocabulary.setWords(score.local_words, score.local_revision)) {
-        details.delete(id);
-        return loadDetail(preservePosition);
-      }
-      if (newerVocabulary) {
-        details.clear();
-        // Item details can discover words marked on another device.
-        // Refresh all cards and saved scores without blocking this chart.
-        void loadLibrary().catch(() => {});
-      }
       updateButton(button, score);
       grid.dispatchEvent(new Event("coverage:updated"));
       if (score.status !== "ready") {
@@ -340,18 +366,6 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       data = score;
-      const combined = new Map();
-      for (const window of data.windows) {
-        for (const item of window.words) {
-          const previous = combined.get(item.word);
-          if (previous) previous.count += item.count;
-          else combined.set(item.word, { ...item });
-        }
-      }
-      wholeItemWords = [...combined.values()].sort(
-        (a, b) => b.count - a.count || a.word.localeCompare(b.word),
-      );
-      details.set(id, score);
       message.textContent = "";
       results.hidden = false;
       render();
@@ -362,6 +376,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   for (const button of buttons) {
+    const preload = () => void coverageData.load(button.dataset.coverageId).catch(() => {});
+    button.addEventListener("pointerenter", preload);
+    button.addEventListener("focus", preload);
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       selectedButton = button;
@@ -389,12 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
     lookupRenderer?.reset();
   });
   window.addEventListener("mogao:known-words-changed", () => {
-    details.clear();
-    requestNumber++;
-    if (dialog.open) void loadDetail(true);
-    // Only loading the library's vocabulary snapshot gates the open chart.
-    // Rescoring the rest of the library happens independently.
-    libraryReady.then(() => loadLibrary()).catch(() => {});
+    void loadLibrary();
   });
   showAllButton.addEventListener("click", () => {
     showAll = !showAll;
@@ -434,27 +446,16 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   if (buttons.length) {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(cacheKey));
-      if (saved) showScores(saved, true);
-    } catch {}
-    libraryReady = loadLibrary();
-    // Warm the shared dictionary on library entry, independently of scores.
-    // Keep custom dictionaries scoped to the item whose coverage is opened.
+    // Warm dictionary lookups independently of coverage downloads.
     void loadDictionary().catch(() => {});
-    libraryReady.then((result) => {
-      if (result?.cached_vocabulary) {
-        void loadLibrary(true).catch((error) => {
-          for (const button of buttons) button.title = error.message;
-        });
-      }
-    }).catch(() => {});
-    libraryReady.catch((error) => {
-      for (const button of buttons) {
-        if (!button.closest("[data-sort-card]").dataset.coverage)
-          button.textContent = "Coverage unavailable";
-        button.title = error.message;
-      }
-    });
+    coverageData.setRevisions(Object.fromEntries(buttons.map((button) => [
+      button.dataset.coverageId,
+      { revision: button.closest("[data-sort-card]").dataset.coverageRevision },
+    ])));
+    warmDetails();
+    void loadLibrary();
   }
-});
+}
+
+if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", initializeCoverage);
+if (typeof module !== "undefined") module.exports = CoverageData;

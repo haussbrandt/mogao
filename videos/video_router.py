@@ -24,7 +24,14 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import AnyHttpUrl, BaseModel
 
 from core.config import settings
-from core.coverage import VOCABULARY_STATS_FILENAME, refresh_coverage
+from core.coverage import (
+    VOCABULARY_STATS_FILENAME,
+    refresh_coverage,
+    remember_created_word,
+    request_library_sync,
+    saved_library,
+    vocabulary_changed,
+)
 from core.known_words import load_local_vocabulary
 from core.dependencies import postprocessor, templates
 from core.paths import (
@@ -280,6 +287,7 @@ async def create_new_anki_card_from_video(data: NewCardFromVideoRequest):
         if data.replace_suspended:
             await delete_suspended_anki_word(data.word)
         await call_anki_async("addNote", note=note)
+        remember_created_word(data.word)
         if settings.postprocessing.text.enabled:
             asyncio.create_task(postprocessor.check_and_process())
         try:
@@ -526,6 +534,8 @@ async def _change_subtitles(video_id: UUID, source: BinaryIO | None = None) -> N
                 logger.exception(f"Subtitle rollback failed; backups in {staging_dir}")
             raise
 
+        # Publish coverage changes only after the subtitle transaction commits.
+        vocabulary_changed()
         cancel_video_dictionary_job(str(video_id))
         load_video_cached.cache_clear()
     except FileNotFoundError:
@@ -1166,10 +1176,17 @@ async def video_library_view(request: Request):
                     }
                 )
 
+    coverage = saved_library("videos") if settings.anki.enabled else {}
+    for item in videos:
+        score = coverage.get(item["id"], {})
+        item["coverage"] = score.get("coverage")
+        item["coverage_revision"] = score.get("revision", "")
+
     preferences = load_video_settings()
     current_sort = preferences.get("sort_order", "title")
     if not settings.anki.enabled and current_sort in {"coverage", "coverage_rev"}:
         current_sort = "title"
+    request_library_sync()
     return templates.TemplateResponse(
         request,
         "video_library.html",

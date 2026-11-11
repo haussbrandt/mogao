@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from core import coverage
 from core.config import settings
 
 router = APIRouter(prefix="/api/known-words")
@@ -148,6 +149,7 @@ def set_local_known(word: str, known: bool, definition: WordDefinition | None = 
         state["words"] = dict(sorted(words.items()))
         state["revision"] += 1
         write_local_vocabulary(state)
+        coverage.vocabulary_changed()
         return state
 
 
