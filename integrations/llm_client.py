@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import math
+import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -18,14 +19,21 @@ MAX_RETRY_DELAY_SECONDS = 60.0
 class LLMResponseError(RuntimeError):
     """Raised when an LLM endpoint returns an unexpected response."""
 
+    def __init__(self, message: str, *, retry_at: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_at = retry_at
 
-def _raise_for_status(response: requests.Response) -> None:
+
+def _raise_for_status(
+    response: requests.Response, *, retry_at: float | None = None
+) -> None:
     try:
         response.raise_for_status()
     except requests.HTTPError as error:
         raise LLMResponseError(
             f"LLM API returned HTTP {response.status_code}. Response body:\n"
-            f"{response.text}"
+            f"{response.text}",
+            retry_at=retry_at,
         ) from error
 
 
@@ -125,7 +133,10 @@ async def _post_with_retries(
                 _raise_for_status(response)
                 return response
             if attempt == MAX_ATTEMPTS - 1:
-                _raise_for_status(response)
+                _raise_for_status(
+                    response,
+                    retry_at=time.monotonic() + _retry_delay(response, attempt),
+                )
             reason = f"HTTP {response.status_code}"
 
         delay = _retry_delay(response, attempt)

@@ -82,6 +82,7 @@ class Postprocessor:
         self.lock = asyncio.Lock()
         self.timer_task = None
         self.next_run_at: float | None = None
+        self.text_retry_at = 0.0
         self.eleven_client = None
         self._failed_card_ids_lock = threading.Lock()
         self._failed_card_ids_revision = 0
@@ -160,10 +161,15 @@ class Postprocessor:
                 if len(processing_card_ids) > 0 and self.timer_task is None:
                     logger.info("Starting a new postprocessing timer")
                     self.last_timer_reset = current_time
-                    self.timer_task = asyncio.create_task(self.start_timer())
+                    self._schedule_text_timer()
 
                 time_since_last = current_time - self.last_timer_reset
-                if processing_card_ids and (
+                cooldown_active = time.monotonic() < self.text_retry_at
+                if processing_card_ids and cooldown_active and not force:
+                    if self.next_run_at is None or self.next_run_at < self.text_retry_at:
+                        self._schedule_text_timer()
+                    logger.info("LLM cooldown active; postponing card postprocessing")
+                elif processing_card_ids and (
                     force
                     or len(processing_card_ids) >= self.batch_size
                     or time_since_last >= self.timeout
@@ -190,7 +196,7 @@ class Postprocessor:
                             f"{len(processing_card_ids)}"
                         )
                         logger.info("Starting a new postprocessing timer")
-                        self.timer_task = asyncio.create_task(self.start_timer())
+                        self._schedule_text_timer()
                     else:
                         self.timer_task = None
                 else:
@@ -212,10 +218,15 @@ class Postprocessor:
                 )
                 self._retain_failed_audio_card_ids(audio_card_ids)
 
+    def _schedule_text_timer(self) -> None:
+        if self.timer_task and self.timer_task is not asyncio.current_task():
+            self.timer_task.cancel()
+        self.next_run_at = max(time.monotonic() + self.timeout, self.text_retry_at)
+        self.timer_task = asyncio.create_task(self.start_timer())
+
     async def start_timer(self):
         try:
-            self.next_run_at = time.monotonic() + self.timeout
-            await asyncio.sleep(self.timeout)
+            await asyncio.sleep(max(0.0, self.next_run_at - time.monotonic()))
             await self.check_and_process()
         except asyncio.CancelledError:
             raise
@@ -281,6 +292,14 @@ class Postprocessor:
                     logger.exception(
                         "Anki synchronization failed after text postprocessing"
                     )
+        except LLMResponseError as error:
+            if error.retry_at is None:
+                raise
+            self.text_retry_at = max(self.text_retry_at, error.retry_at)
+            logger.warning(
+                "Card postprocessing paused for %.1f seconds after LLM failure",
+                max(0.0, self.text_retry_at - time.monotonic()),
+            )
         finally:
             self._set_failed_text_card_ids(failed_card_ids)
 
@@ -436,8 +455,10 @@ async def call_llm_batch(api_key, batch_data):
         ):
             raise LLMResponseError("LLM response did not contain a results array")
         return result["results"]
-    except Exception:
+    except Exception as error:
         logger.exception("LLM API request failed")
+        if isinstance(error, LLMResponseError) and error.retry_at is not None:
+            raise
         return []
 
 
