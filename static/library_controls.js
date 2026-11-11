@@ -30,7 +30,9 @@ document.addEventListener("DOMContentLoaded", () => {
       return left.localeCompare(right) * directionMultiplier;
     });
 
-    cards.forEach((card) => grid.appendChild(card));
+    if (cards.some((card, index) => card !== grid.children[index])) {
+      cards.forEach((card) => grid.appendChild(card));
+    }
   };
 
   sortCards();
