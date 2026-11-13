@@ -35,6 +35,8 @@
       this.seekPending = true;
       this.rate = 1;
       this.normalRate = 1;
+      this.initialRate = Number(config.initialPlaybackRate);
+      this.rateSave = Promise.resolve();
       this.wanted = false;
       this.revision = 0;
       this.lifetime = new AbortController();
@@ -127,6 +129,9 @@
     async initialize() {
       this.setStatus("Loading video…");
       this.manifest = await this.fetch(`${this.base}/manifest`, false, { signal: AbortSignal.timeout(480000) });
+      this.rate = this.manifest.rates.includes(this.initialRate) ? this.initialRate : 1;
+      this.normalRate = this.rate;
+      this.video.playbackRate = this.rate;
       this.assetBase = `${this.base}/${this.manifest.version}`;
       const Source = window.ManagedMediaSource || window.MediaSource;
       if (!Source?.isTypeSupported(this.manifest.mime)) throw new Error("This browser cannot decode the video's format.");
@@ -801,7 +806,20 @@
           this.currentTime = this.clampPosition(this.currentTime + offset);
         });
       }
-      document.getElementById("playback-rate").addEventListener("change", e => { this.playbackRate = e.target.value; });
+      document.getElementById("playback-rate").addEventListener("change", e => {
+        this.playbackRate = e.target.value;
+        const rate = this.rate;
+        // Save only explicit selections, in order; hold-to-speed-up is temporary.
+        this.rateSave = this.rateSave.then(async () => {
+          const response = await fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-playback-rate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
+            body: JSON.stringify({ playback_rate: rate }),
+            keepalive: true,
+          });
+          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        }).catch(error => console.error("Could not save playback speed", error));
+      });
       this.bindRange(document.getElementById("playback-volume"), {
         input: () => {
           this.volume = Number(document.getElementById("playback-volume").value);

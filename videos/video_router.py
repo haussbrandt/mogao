@@ -1060,6 +1060,7 @@ async def watch_video(request: Request, video_id: UUID):
 
     progress = load_video_progress(video_id_string)
     seconds_since_start = progress.get("seconds_since_start", 0)
+    preferences = load_video_settings()
 
     deck_words = set()
     suspended_words = set()
@@ -1076,9 +1077,10 @@ async def watch_video(request: Request, video_id: UUID):
             "video": video,
             "video_id": video_id_string,
             "initial_playback_time": seconds_since_start,
+            "initial_playback_rate": preferences.get("playback_rate", 1),
             "has_subtitles": has_subtitles,
             "transcript_mode": has_subtitles
-            and load_video_settings().get("subtitle_mode") == "transcript",
+            and preferences.get("subtitle_mode") == "transcript",
             "deck_words": list(deck_words),
             "suspended_words": list(suspended_words),
             "known_words": list(known_words),
@@ -1112,6 +1114,18 @@ class SaveVideoSortRequest(BaseModel):
 
 class SaveVideoSubtitleModeRequest(BaseModel):
     subtitle_mode: Literal["subtitles", "transcript"]
+
+
+class SaveVideoPlaybackRateRequest(BaseModel):
+    playback_rate: Literal[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+
+@router.post("/api/save-playback-rate")
+async def save_video_playback_rate_api(data: SaveVideoPlaybackRateRequest):
+    current_settings = load_video_settings()
+    current_settings["playback_rate"] = data.playback_rate
+    save_video_settings(current_settings)
+    return {"status": "ok"}
 
 
 @router.post("/api/save-subtitle-mode")

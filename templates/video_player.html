@@ -153,6 +153,7 @@
       videoBasePath: "{{ video_base_path }}",
       generatedDictionaryUrl: {{ (video_base_path ~ "/api/video-dict/" ~ video_id) | tojson }},
       initialPlaybackTime: {{ initial_playback_time | tojson }},
+      initialPlaybackRate: {{ initial_playback_rate | tojson }},
       hasSubtitles: {{ has_subtitles | tojson }},
       ankiEnabled: {{ anki_enabled | tojson }},
       deckWords: {{ deck_words | tojson }},
@@ -173,6 +174,6 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='playback.js') }}?v=1"></script>
+  <script src="{{ url_for('static', path='playback.js') }}?v=2"></script>
   <script src="{{ url_for('static', path='video.js' )}}?v=14"></script>
 </html>
