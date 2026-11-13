@@ -1,0 +1,143 @@
+// Subtitle timing drives these controls; gaps are not audio speech detection.
+window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
+  let cues = [];
+  let intervals = [];
+  let previousTime = null;
+  let pinnedIndex = -1;
+  let savedRate = null;
+  let suppressedGap = null;
+  const autopause = document.getElementById("subtitle-autopause");
+  const gapMode = document.getElementById("subtitle-gap-mode");
+  if (autopause) autopause.checked = autopause.getAttribute("aria-pressed") === "true";
+  playback.warmGapSpeed = gapMode?.value === "fast";
+  let settingsSave = Promise.resolve();
+
+  function saveSettings() {
+    const body = JSON.stringify({
+      autopause: !!autopause?.checked,
+      gap_mode: gapMode?.value ?? "normal",
+    });
+    // Snapshot each change and save in order, including rapid toggles.
+    settingsSave = settingsSave.then(async () => {
+      const response = await fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-subtitle-playback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
+        body,
+        keepalive: true,
+      });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    }).catch(error => console.error("Could not save subtitle playback settings", error));
+  }
+
+  function restoreRate() {
+    if (savedRate === null) return;
+    const rate = savedRate;
+    savedRate = null;
+    playback.playbackRate = rate;
+  }
+
+  function resetPosition() {
+    previousTime = null;
+    pinnedIndex = -1;
+    suppressedGap = null;
+    restoreRate();
+  }
+
+  video.addEventListener("seeking", () => {
+    // Rate changes also align the video with the audio clock internally.
+    if (playback.seekPending) resetPosition();
+  });
+  video.addEventListener("play", () => { pinnedIndex = -1; });
+  video.addEventListener("pause", () => {
+    if (!playback.wanted) restoreRate();
+  });
+  video.addEventListener("playback-speed-selection", () => {
+    // An explicit speed choice wins until this gap ends.
+    suppressedGap = intervals.find(interval => playback.currentTime < interval.start);
+    restoreRate();
+  });
+  gapMode?.addEventListener("change", () => {
+    playback.warmGapSpeed = gapMode.value === "fast";
+    suppressedGap = null;
+    restoreRate();
+    saveSettings();
+  });
+  autopause?.addEventListener("click", () => {
+    autopause.checked = !autopause.checked;
+    autopause.setAttribute("aria-pressed", String(autopause.checked));
+    autopause.textContent = `Autopause: ${autopause.checked ? "On" : "Off"}`;
+    autopause.dispatchEvent(new Event("change"));
+  });
+  autopause?.addEventListener("change", () => {
+    previousTime = playback.currentTime;
+    if (!autopause.checked) pinnedIndex = -1;
+    saveSettings();
+  });
+
+  return {
+    restoreRate,
+    setCues(value) {
+      resetPosition();
+      cues = value;
+      // Merge overlapping cues so a gap can never skip another cue's speech.
+      intervals = [];
+      for (const cue of [...cues].sort((a, b) => a.start - b.start)) {
+        const last = intervals[intervals.length - 1];
+        if (last && cue.start <= last.end) last.end = Math.max(last.end, cue.end);
+        else intervals.push({ start: cue.start, end: cue.end });
+      }
+      if (autopause) autopause.disabled = !cues.length;
+      if (gapMode) gapMode.disabled = !cues.length;
+    },
+    tick() {
+      const time = playback.currentTime;
+      if (gapMode?.value === "fast" && !isHoldingSpeed()) playback.prepareGapSpeed?.();
+      if (playback.seekPending || playback.scrubbing) {
+        previousTime = null;
+        pinnedIndex = -1;
+        return -1;
+      }
+      if (!playback.wanted) {
+        restoreRate();
+        previousTime = time;
+        return pinnedIndex;
+      }
+      pinnedIndex = -1;
+      if (autopause?.checked && previousTime !== null && time >= previousTime) {
+        let ending = -1;
+        cues.forEach((cue, index) => {
+          if (cue.end > previousTime && cue.end <= time &&
+              (ending === -1 || cue.end < cues[ending].end)) ending = index;
+        });
+        if (ending !== -1) {
+          pinnedIndex = ending;
+          previousTime = time;
+          playback.pause();
+          restoreRate();
+          return pinnedIndex;
+        }
+      }
+      previousTime = time;
+      const nextIndex = intervals.findIndex(interval => interval.start > time);
+      const next = intervals[nextIndex];
+      const end = nextIndex > 0 ? intervals[nextIndex - 1].end : 0;
+      const inGap = next && next.start - end >= 1 &&
+        time >= end + 0.3 && time < next.start - 0.3;
+      if (!inGap || gapMode?.value === "normal" || isHoldingSpeed()) {
+        restoreRate();
+        if (!inGap) suppressedGap = null;
+      } else if (gapMode?.value === "skip") {
+        restoreRate();
+        playback.currentTime = next.start - 0.3;
+        previousTime = null;
+      } else if (gapMode?.value === "fast" && suppressedGap !== next && savedRate === null) {
+        // Keep playing normally if the alternative audio is still loading.
+        if (!playback.gapSpeedReady || playback.gapSpeedReady()) {
+          savedRate = playback.playbackRate;
+          playback.playbackRate = 3;
+        }
+      }
+      return -1;
+    },
+  };
+};

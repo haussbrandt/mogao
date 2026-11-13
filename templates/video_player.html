@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=17"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=10" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=15" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -50,6 +50,17 @@
       </a>
       <div id="subtitle-controls">
         {% if has_subtitles %}
+        <button id="subtitle-autopause" type="button" class="subtitle-action subtitle-automation"
+          aria-pressed="{{ 'true' if autopause else 'false' }}" title="Pause after each subtitle cue and keep its text visible" disabled>Autopause: {{ 'On' if autopause else 'Off' }}</button>
+        <div id="subtitle-gap-container">
+          <button id="subtitle-gap-mode" class="subtitle-action subtitle-automation" type="button"
+            value="{{ gap_mode }}" aria-expanded="false" aria-controls="subtitle-gap-menu" disabled>Gaps: {{ {'normal': 'Normal', 'fast': '3×', 'skip': 'Skip'}[gap_mode] }}</button>
+          <div id="subtitle-gap-menu" role="group" aria-label="Playback during subtitle gaps" hidden>
+            <button type="button" data-gap-mode="normal" aria-pressed="{{ 'true' if gap_mode == 'normal' else 'false' }}">Normal</button>
+            <button type="button" data-gap-mode="fast" aria-pressed="{{ 'true' if gap_mode == 'fast' else 'false' }}">Fast-forward (3×)</button>
+            <button type="button" data-gap-mode="skip" aria-pressed="{{ 'true' if gap_mode == 'skip' else 'false' }}">Skip</button>
+          </div>
+        </div>
         <button
           id="subtitle-mode-toggle"
           class="subtitle-action"
@@ -126,11 +137,11 @@
                 <div class="playback-speed-heading">Playback speed <output id="playback-speed-value" for="playback-speed-slider">1×</output></div>
                 <div class="playback-speed-slider-row">
                   <button id="playback-speed-minus" type="button" aria-label="Decrease speed by 0.05×" disabled>−</button>
-                  <input id="playback-speed-slider" type="range" min="0.5" max="2" step="0.05" value="1" aria-label="Playback speed" disabled>
+                  <input id="playback-speed-slider" type="range" min="0.5" max="3" step="0.05" value="1" aria-label="Playback speed" disabled>
                   <button id="playback-speed-plus" type="button" aria-label="Increase speed by 0.05×" disabled>+</button>
                 </div>
                 <div id="playback-speed-presets" aria-label="Standard speeds">
-                  {% for rate in [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] %}
+                  {% for rate in [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] %}
                   <button type="button" data-rate="{{ rate }}" aria-pressed="{{ 'true' if rate == 1 else 'false' }}" disabled>{{ rate }}×</button>
                   {% endfor %}
                 </div>
@@ -189,6 +200,7 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='playback.js') }}?v=4"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=14"></script>
+  <script src="{{ url_for('static', path='playback.js') }}?v=7"></script>
+  <script src="{{ url_for('static', path='subtitle-playback.js') }}?v=4"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=16"></script>
 </html>

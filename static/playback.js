@@ -41,6 +41,7 @@
       this.revision = 0;
       this.lifetime = new AbortController();
       this.audio = new Map();
+      this.decodedAudio = new WeakSet();
       this.segmentRequests = new Map();
       this.videoBytes = new Map();
       const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, "0")).join("");
@@ -130,7 +131,7 @@
       this.setStatus("Loading video…");
       this.manifest = await this.fetch(`${this.base}/manifest`, false, { signal: AbortSignal.timeout(480000) });
       this.rate = this.manifest.rates.includes(this.initialRate) ? this.initialRate : 1;
-      this.normalRate = this.rate === 2 ? 1 : this.rate;
+      this.normalRate = this.rate;
       this.video.playbackRate = this.rate;
       this.assetBase = `${this.base}/${this.manifest.version}`;
       const Source = window.ManagedMediaSource || window.MediaSource;
@@ -249,7 +250,8 @@
     chunkAt(position) { return Math.floor(position / this.manifest.chunkSeconds); }
     audioWindow(position) {
       const first = this.chunkAt(Math.max(0, position - BUFFER_BEHIND));
-      const bytesPerChunk = this.manifest.chunkSeconds * this.manifest.sampleRate * AUDIO_CHANNELS * FLOAT_BYTES * (1 / this.normalRate + 1 / 2);
+      const bytesPerChunk = this.manifest.chunkSeconds * this.manifest.sampleRate * AUDIO_CHANNELS * FLOAT_BYTES *
+        (1 / this.normalRate + 1 / 2 + (this.warmGapSpeed ? 1 / 3 : 0));
       const count = Math.floor(AUDIO_BYTES / bytesPerChunk);
       return {
         first,
@@ -262,6 +264,7 @@
       this.audio.clear();
       this.audioGeneration++;
       this.audioMisses = new Map();
+      this.audioRateOrigins = new Map();
       // Warm the Back button even after starting at an unbuffered position.
       this.audioOrigin = this.audioWindow(position).first;
       this.scheduling = null;
@@ -271,20 +274,41 @@
       if (this.audioMisses.has(key)) return Promise.reject(this.audioMisses.get(key));
       if (!this.audio.has(key)) {
         const signal = this.audioAbort.signal;
-        const path = `${this.assetBase}/audio/${chunk}?rate=${rate}&session=${this.audioSession}&generation=${this.audioGeneration}&origin=${this.audioOrigin}`;
+        const generation = this.audioGeneration;
+        const origins = this.audioRateOrigins;
+        const firstOrigin = this.audioOrigin;
         const request = (this.audioQueue || Promise.resolve()).catch(() => {}).then(async () => {
             signal.throwIfAborted();
-            const bytes = await this.fetch(path, true,
-              { signal: AbortSignal.any([signal, AbortSignal.timeout(45000)]) });
+            if (!origins.has(rate) || chunk < origins.get(rate)) {
+              origins.set(rate, Math.max(firstOrigin, chunk - 2));
+            }
+            const fetchChunk = () => {
+              const path = `${this.assetBase}/audio/${chunk}?rate=${rate}&session=${this.audioSession}&generation=${generation}&origin=${origins.get(rate)}`;
+              return this.fetch(path, true,
+                { signal: AbortSignal.any([signal, AbortSignal.timeout(45000)]) });
+            };
+            let bytes;
+            try { bytes = await fetchChunk(); }
+            catch (error) {
+              if (error.code !== "AUDIO_WINDOW_EXPIRED" || signal.aborted) throw error;
+              // Recreate just this rate's expired decoder near the requested
+              // chunk; other speeds and playing audio remain intact.
+              origins.set(rate, chunk);
+              bytes = await fetchChunk();
+            }
             signal.throwIfAborted();
             return this.decoder.decodeAudioData(bytes);
-          }).then(buffer => { signal.throwIfAborted(); return buffer; });
+          }).then(buffer => {
+            signal.throwIfAborted();
+            this.decodedAudio.add(request);
+            return buffer;
+          });
         this.audioQueue = request.then(() => {}, () => {});
         this.audio.set(key, request);
         request.catch(error => {
           if (this.audio.get(key) === request) this.audio.delete(key);
           if (!signal.aborted && this.audioAbort.signal === signal &&
-              ["AUDIO_WINDOW_EXPIRED", "AUDIO_SUPERSEDED"].includes(error.code)) {
+              error.code === "AUDIO_SUPERSEDED") {
             this.audioMisses.set(key, error);
           }
         });
@@ -500,17 +524,46 @@
       } finally { clearTimeout(loading); }
     }
 
+    audioRateReady(rate, ahead = 1) {
+      if (!this.manifest?.audio) return !!this.manifest;
+      const chunk = this.chunkAt(this.currentTime);
+      return Array.from({ length: ahead + 1 }, (_, offset) => chunk + offset)
+        .filter(index => index * this.manifest.chunkSeconds < this.manifest.duration)
+        .every(index => this.decodedAudio.has(this.audio.get(`${rate}:${index}`)));
+    }
+
+    prepareGapSpeed() {
+      if (this.rate !== 3) this.gapReturnRate = this.rate;
+      if (!this.initialized || this.seekPending || !this.wanted || this.gapWarming) return;
+      this.gapWarming = Promise.all([
+        this.ensureAudio(this.currentTime, 3, 2),
+        this.ensureAudio(this.currentTime, this.gapReturnRate ?? this.normalRate, 2),
+      ]).catch(() => {}).finally(() => { this.gapWarming = null; });
+    }
+
+    gapSpeedReady() {
+      return !this.starting && !this.seekPending && this.audioRateReady(3, 2) &&
+        this.audioRateReady(this.gapReturnRate ?? this.normalRate, 2);
+    }
+
     get playbackRate() { return this.rate; }
     set playbackRate(value) {
       if (!this.manifest?.rates.includes(Number(value)) || Number(value) === this.rate) return;
+      const seamless = this.wanted && !this.starting && !this.seekPending &&
+        !this.video.paused && this.audioRateReady(Number(value));
       const position = this.currentTime;
       this.pendingTime = position;
       const revision = ++this.revision;
       this.rate = Number(value);
-      if (this.rate !== 2) this.normalRate = this.rate;
+      if (this.rate !== 2 && this.rate !== 3) this.normalRate = this.rate;
       if (!this.audio.has(`${this.rate}:${this.chunkAt(this.currentTime)}`)) this.resetAudio(this.currentTime);
       this.video.playbackRate = this.rate;
-      if (this.wanted) {
+      if (seamless) {
+        // Both tempo versions are decoded: switch clocks without stopping video.
+        this.startAudio(position, revision).catch(error => {
+          if (revision === this.revision) this.fail(error);
+        });
+      } else if (this.wanted) {
         this.video.pause();
         this.stopAudio();
         this.resume(revision).catch(error => { if (revision === this.revision) this.fail(error); });
@@ -540,7 +593,9 @@
     prefetch() {
       if (!this.initialized || this.seekPending || this.scrubbing) return;
       const position = this.currentTime, { first, last } = this.audioWindow(position);
-      const rates = new Set([this.normalRate, 2]);
+      const rates = new Set([this.normalRate, this.rate === 3 ? 3 : 2]);
+      if (this.warmGapSpeed) rates.add(3);
+      if (this.warmGapSpeed && this.gapReturnRate) rates.add(this.gapReturnRate);
       for (const key of this.audio.keys()) {
         const chunk = Number(key.split(":")[1]);
         const rate = Number(key.split(":")[0]);
@@ -569,7 +624,7 @@
           ...Array.from({ length: last - first + 1 }, (_, i) => first + i)]);
         for (const chunk of chunks) {
           if (chunk < Math.max(first, this.audioOrigin) || chunk > last) continue;
-          for (const rate of new Set([this.rate, this.normalRate, 2])) {
+          for (const rate of new Set([this.rate, this.normalRate, this.rate === 3 ? 3 : 2])) {
             if (revision !== this.revision || generation !== this.audioGeneration) return;
             // Queue one background request at a time so a user action can run
             // after the in-flight transfer, not behind a minute of prefetch.
@@ -762,6 +817,8 @@
     selectSpeed(value) {
       const rate = Number(Number(value).toFixed(2));
       if (!this.manifest?.rates.includes(rate)) return;
+      this.video.dispatchEvent(new Event("playback-speed-selection"));
+      this.normalRate = rate;
       this.playbackRate = rate;
       // Save only explicit selections, in order; hold-to-speed-up is temporary.
       this.rateSave = this.rateSave.then(async () => {

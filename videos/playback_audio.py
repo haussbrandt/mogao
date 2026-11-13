@@ -199,10 +199,10 @@ def _read_chunk(session, source, version, generation, origin, rate, duration, ch
         if previous and generation < previous[0]:
             raise HTTPException(409, {"code": "AUDIO_SUPERSEDED", "message": "Audio request was superseded."})
         _generations[session] = (generation, time.monotonic())
-        # One seek generation can retain two continuous rates (normal and 2x).
-        # A new generation replaces both; unrelated viewers remain untouched.
+        # Each rate can start near its own playhead without discarding other
+        # rates. A new seek generation still replaces the entire session.
         for old_key, old in owned:
-            if old.identity[:4] != identity[:4]:
+            if old.identity[:3] != identity[:3] or (old_key == key and old.identity[3] != origin):
                 old.close()
                 del _streams[old_key]
         stream = _streams.get(key)
@@ -220,7 +220,7 @@ def _read_chunk(session, source, version, generation, origin, rate, duration, ch
         stream = _streams.get(key)
         if stream is None:
             owned = [(k, s) for k, s in _streams.items() if k[0] == session]
-            if len(owned) >= 2:
+            if len(owned) >= 3:
                 old_key, old = min(owned, key=lambda pair: pair[1].used)
                 old.close()
                 del _streams[old_key]

@@ -1,4 +1,4 @@
-* @import url("variables.css");
+@import url("variables.css");
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -32,10 +32,24 @@ body {
 
 #subtitle-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   min-width: 0;
   gap: 12px;
+}
+
+.subtitle-automation {
+  width: 112px;
+  justify-content: center;
+  gap: 6px;
+}
+
+#subtitle-autopause { padding-inline: 4px; }
+
+@media (max-width: 600px) {
+  #player-toolbar { flex-wrap: wrap; }
+  #subtitle-controls { flex: 1 1 100%; gap: 6px; }
 }
 
 #subtitle-mode-toggle {
@@ -43,7 +57,8 @@ body {
   justify-content: center;
 }
 
-#subtitle-menu-container {
+#subtitle-menu-container,
+#subtitle-gap-container {
   position: relative;
   flex: none;
 }
@@ -61,7 +76,8 @@ body {
   display: none;
 }
 
-#subtitle-menu {
+#subtitle-menu,
+#subtitle-gap-menu {
   position: absolute;
   z-index: 10;
   top: calc(100% + 6px);
@@ -74,7 +90,10 @@ body {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
-#subtitle-menu button {
+#subtitle-gap-menu[hidden] { display: none; }
+
+#subtitle-menu button,
+#subtitle-gap-menu button {
   display: block;
   width: 100%;
   padding: 10px 12px;
@@ -88,7 +107,10 @@ body {
 }
 
 #subtitle-menu button:hover:not(:disabled),
-#subtitle-menu button:focus-visible {
+#subtitle-menu button:focus-visible,
+#subtitle-gap-menu button:hover,
+#subtitle-gap-menu button:focus-visible,
+#subtitle-gap-menu button[aria-pressed="true"] {
   background: rgba(255, 255, 255, 0.15);
 }
 
@@ -189,7 +211,14 @@ body {
 .playback-speed-slider-row { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
 #playback-speed-slider { flex: 1; width: 100%; }
 #playback-speed-minus, #playback-speed-plus { font-size: 24px; }
-#playback-speed-presets { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+#playback-speed-presets {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(36px, 1fr);
+  gap: 2px;
+  overflow-x: auto;
+  padding: 3px;
+}
 #playback-speed-presets button { min-width: 0; padding: 0 2px; font-size: 12px; white-space: nowrap; }
 #playback-speed-presets button[aria-pressed="true"] {
   background: var(--bg-subtle);
@@ -342,6 +371,8 @@ body {
 }
 
 .subtitle-action {
+  box-sizing: border-box;
+  white-space: nowrap;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -498,7 +529,8 @@ body {
     font-size: 0.75rem;
   }
 
-  #subtitle-mode-toggle {
+  #subtitle-mode-toggle,
+  .subtitle-automation {
     width: 96px;
   }
 

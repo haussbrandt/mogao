@@ -1078,6 +1078,9 @@ async def watch_video(request: Request, video_id: UUID):
             "video_id": video_id_string,
             "initial_playback_time": seconds_since_start,
             "initial_playback_rate": preferences.get("playback_rate", 1),
+            "autopause": preferences.get("autopause") is True,
+            "gap_mode": preferences.get("gap_mode")
+            if preferences.get("gap_mode") in ("normal", "fast", "skip") else "normal",
             "has_subtitles": has_subtitles,
             "transcript_mode": has_subtitles
             and preferences.get("subtitle_mode") == "transcript",
@@ -1125,6 +1128,19 @@ class SaveVideoPlaybackRateRequest(BaseModel):
         if value not in RATES:
             raise ValueError("Playback speed must be between 0.5 and 2 in steps of 0.05")
         return value
+
+
+class SaveVideoSubtitlePlaybackRequest(BaseModel):
+    autopause: bool
+    gap_mode: Literal["normal", "fast", "skip"]
+
+
+@router.post("/api/save-subtitle-playback")
+async def save_video_subtitle_playback_api(data: SaveVideoSubtitlePlaybackRequest):
+    current_settings = load_video_settings()
+    current_settings.update(autopause=data.autopause, gap_mode=data.gap_mode)
+    save_video_settings(current_settings)
+    return {"status": "ok"}
 
 
 @router.post("/api/save-playback-rate")

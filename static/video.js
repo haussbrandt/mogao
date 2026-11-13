@@ -54,6 +54,7 @@ function startSpeedHold(position, identifiers) {
   speedHold = hold;
   hold.timer = setTimeout(() => {
     if (speedHold !== hold || video.paused || video.ended) return;
+    subtitlePlayback.restoreRate();
     hold.previousRate = playback.playbackRate;
     hold.active = true;
     if (playback.playbackRate !== 2) playback.playbackRate = 2;
@@ -263,7 +264,9 @@ function parseSRT(text) {
         .replace(/<[^>]+>/g, "");
       return { start, end, text };
     })
-    .filter(Boolean);
+    .filter((cue) => cue && Number.isFinite(cue.start) && Number.isFinite(cue.end) &&
+      cue.start >= 0 && cue.end > cue.start)
+    .sort((a, b) => a.start - b.start);
 }
 
 function renderSubtitle(sub) {
@@ -345,10 +348,49 @@ function updateActiveTranscriptLine(idx) {
 }
 
 let lastSubIndex = -1;
+const subtitlePlayback = window.createSubtitlePlayback(playback, video, () => speedHold?.active);
+const gapButton = document.getElementById("subtitle-gap-mode");
+const gapMenu = document.getElementById("subtitle-gap-menu");
+const gapContainer = document.getElementById("subtitle-gap-container");
+
+function closeGapMenu() {
+  if (!gapMenu) return;
+  gapMenu.hidden = true;
+  gapButton.setAttribute("aria-expanded", "false");
+}
+
+gapButton?.addEventListener("click", () => {
+  gapMenu.hidden = !gapMenu.hidden;
+  gapButton.setAttribute("aria-expanded", String(!gapMenu.hidden));
+  if (!gapMenu.hidden) gapMenu.querySelector('[aria-pressed="true"]').focus();
+});
+gapMenu?.addEventListener("click", (event) => {
+  const choice = event.target.closest("[data-gap-mode]");
+  if (!choice) return;
+  gapButton.value = choice.dataset.gapMode;
+  gapButton.textContent = `Gaps: ${{ normal: "Normal", fast: "3×", skip: "Skip" }[gapButton.value]}`;
+  gapMenu.querySelectorAll("button").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button === choice));
+  });
+  gapButton.dispatchEvent(new Event("change"));
+  closeGapMenu();
+  gapButton.focus();
+});
+document.addEventListener("click", (event) => {
+  if (!gapContainer?.contains(event.target)) closeGapMenu();
+});
+gapContainer?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeGapMenu();
+    gapButton.focus();
+  }
+});
+let pinnedSubtitleIndex = -1;
 
 function updateSubtitle() {
   const t = playback.currentTime;
-  const idx = segmentedSubs.findIndex((s) => t >= s.start && t <= s.end);
+  const idx = pinnedSubtitleIndex !== -1 ? pinnedSubtitleIndex :
+    segmentedSubs.findIndex((s) => t >= s.start && t <= s.end);
   if (idx === lastSubIndex) return;
   lastSubIndex = idx;
   idx === -1 ? (overlay.innerHTML = "") : renderSubtitle(segmentedSubs[idx]);
@@ -356,6 +398,7 @@ function updateSubtitle() {
 }
 
 function tick() {
+  pinnedSubtitleIndex = subtitlePlayback.tick();
   updateSubtitle();
   requestAnimationFrame(tick);
 }
@@ -374,6 +417,7 @@ if (window.MOGAO_CONFIG.hasSubtitles) {
     })
     .then((text) => {
       segmentedSubs = parseSRT(text);
+      subtitlePlayback.setCues(segmentedSubs);
       renderTranscript();
       lastSubIndex = -1;
       updateSubtitle();

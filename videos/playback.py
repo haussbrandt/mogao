@@ -26,7 +26,7 @@ from videos.playback_audio import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stream/playback")
 CACHE_BYTES = 512 * 1024**2
-RATES = tuple(step / 20 for step in range(10, 41))
+RATES = tuple(step / 20 for step in range(10, 61))
 _cache_lock = threading.Lock()
 _path_locks = WeakValueDictionary()
 _path_locks_lock = threading.Lock()
