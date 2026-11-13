@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=17"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=8" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=10" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -120,7 +120,22 @@
               </button>
               <input id="playback-volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" disabled>
             </div>
-            <select id="playback-rate" aria-label="Playback speed" title="Playback speed" disabled></select>
+            <div id="playback-speed">
+              <button id="playback-rate" type="button" aria-label="Playback speed" title="Playback speed" aria-expanded="false" aria-controls="playback-speed-panel" disabled>1×</button>
+              <div id="playback-speed-panel" role="group" aria-label="Playback speed" hidden>
+                <div class="playback-speed-heading">Playback speed <output id="playback-speed-value" for="playback-speed-slider">1×</output></div>
+                <div class="playback-speed-slider-row">
+                  <button id="playback-speed-minus" type="button" aria-label="Decrease speed by 0.05×" disabled>−</button>
+                  <input id="playback-speed-slider" type="range" min="0.5" max="2" step="0.05" value="1" aria-label="Playback speed" disabled>
+                  <button id="playback-speed-plus" type="button" aria-label="Increase speed by 0.05×" disabled>+</button>
+                </div>
+                <div id="playback-speed-presets" aria-label="Standard speeds">
+                  {% for rate in [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] %}
+                  <button type="button" data-rate="{{ rate }}" aria-pressed="{{ 'true' if rate == 1 else 'false' }}" disabled>{{ rate }}×</button>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
             <button id="playback-fullscreen" type="button" aria-label="Fullscreen" title="Fullscreen" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>
             </button>
@@ -174,6 +189,6 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='playback.js') }}?v=2"></script>
+  <script src="{{ url_for('static', path='playback.js') }}?v=4"></script>
   <script src="{{ url_for('static', path='video.js' )}}?v=14"></script>
 </html>

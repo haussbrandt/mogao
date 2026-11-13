@@ -130,7 +130,7 @@
       this.setStatus("Loading video…");
       this.manifest = await this.fetch(`${this.base}/manifest`, false, { signal: AbortSignal.timeout(480000) });
       this.rate = this.manifest.rates.includes(this.initialRate) ? this.initialRate : 1;
-      this.normalRate = this.rate;
+      this.normalRate = this.rate === 2 ? 1 : this.rate;
       this.video.playbackRate = this.rate;
       this.assetBase = `${this.base}/${this.manifest.version}`;
       const Source = window.ManagedMediaSource || window.MediaSource;
@@ -155,8 +155,9 @@
         this.holdingVideo = position >= this.manifest.videoDuration;
         this.seekPending = false;
       }
-      document.getElementById("playback-rate").replaceChildren(
-        ...this.manifest.rates.map(rate => new Option(`${rate}×`, String(rate), rate === 1, rate === this.rate)));
+      const speedSlider = document.getElementById("playback-speed-slider");
+      speedSlider.min = String(this.manifest.rates[0]);
+      speedSlider.max = String(this.manifest.rates.at(-1));
       this.setStatus(""); this.controls.querySelectorAll("input,button,select").forEach(control => { control.disabled = false; });
       document.getElementById("playback-seek").max = String(this.manifest.duration);
       document.getElementById("playback-volume").disabled = !this.manifest.audio;
@@ -739,7 +740,40 @@
       this.paintRange(seek);
       seek.setAttribute("aria-valuetext", `${this.formatTime(position)} of ${this.formatTime(this.manifest?.duration)}`);
       document.getElementById("playback-time").textContent = `${this.formatTime(position)} / ${this.formatTime(this.manifest?.duration)}`;
-      document.getElementById("playback-rate").value = String(this.rate);
+      if (!this.adjustingRate) this.updateSpeedControls(this.rate);
+    }
+
+    updateSpeedControls(rate) {
+      const label = `${Number(rate.toFixed(2))}×`;
+      document.getElementById("playback-rate").textContent = label;
+      document.getElementById("playback-rate").setAttribute("aria-label", `Playback speed: ${label}`);
+      document.getElementById("playback-speed-value").value = label;
+      const slider = document.getElementById("playback-speed-slider");
+      slider.value = String(rate);
+      slider.setAttribute("aria-valuetext", label);
+      this.paintRange(slider);
+      document.getElementById("playback-speed-minus").disabled = !this.initialized || rate <= Number(slider.min);
+      document.getElementById("playback-speed-plus").disabled = !this.initialized || rate >= Number(slider.max);
+      document.querySelectorAll("#playback-speed-presets button").forEach(button => {
+        button.setAttribute("aria-pressed", String(Number(button.dataset.rate) === rate));
+      });
+    }
+
+    selectSpeed(value) {
+      const rate = Number(Number(value).toFixed(2));
+      if (!this.manifest?.rates.includes(rate)) return;
+      this.playbackRate = rate;
+      // Save only explicit selections, in order; hold-to-speed-up is temporary.
+      this.rateSave = this.rateSave.then(async () => {
+        const response = await fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-playback-rate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
+          body: JSON.stringify({ playback_rate: rate }),
+          keepalive: true,
+        });
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      }).catch(error => console.error("Could not save playback speed", error));
+      this.updateControls();
     }
     updateVolume() {
       const input = document.getElementById("playback-volume");
@@ -806,19 +840,46 @@
           this.currentTime = this.clampPosition(this.currentTime + offset);
         });
       }
-      document.getElementById("playback-rate").addEventListener("change", e => {
-        this.playbackRate = e.target.value;
-        const rate = this.rate;
-        // Save only explicit selections, in order; hold-to-speed-up is temporary.
-        this.rateSave = this.rateSave.then(async () => {
-          const response = await fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-playback-rate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
-            body: JSON.stringify({ playback_rate: rate }),
-            keepalive: true,
-          });
-          if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-        }).catch(error => console.error("Could not save playback speed", error));
+      const speedButton = document.getElementById("playback-rate");
+      const speedPanel = document.getElementById("playback-speed-panel");
+      const speedSlider = document.getElementById("playback-speed-slider");
+      const closeSpeedPanel = () => {
+        speedPanel.hidden = true;
+        speedButton.setAttribute("aria-expanded", "false");
+      };
+      speedButton.addEventListener("click", () => {
+        speedPanel.hidden = !speedPanel.hidden;
+        speedButton.setAttribute("aria-expanded", String(!speedPanel.hidden));
+        if (!speedPanel.hidden) speedSlider.focus({ preventScroll: true });
+      });
+      document.addEventListener("pointerdown", e => {
+        if (!document.getElementById("playback-speed").contains(e.target)) closeSpeedPanel();
+      });
+      document.getElementById("playback-speed").addEventListener("focusout", e => {
+        // A touch tap can blur the slider without focusing the tapped button.
+        // Keep it visible until that button receives its click. Outside taps
+        // are handled by pointerdown; keyboard focus changes have a target.
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) closeSpeedPanel();
+      });
+      document.addEventListener("keydown", e => {
+        if (e.key === "Escape" && !speedPanel.hidden) {
+          closeSpeedPanel();
+          speedButton.focus({ preventScroll: true });
+        }
+      });
+      this.bindRange(speedSlider, {
+        start: () => { this.adjustingRate = true; },
+        input: () => this.updateSpeedControls(Number(speedSlider.value)),
+        end: () => {
+          this.adjustingRate = false;
+          this.selectSpeed(speedSlider.value);
+        },
+      });
+      for (const [id, step] of [["playback-speed-minus", -0.05], ["playback-speed-plus", 0.05]]) {
+        document.getElementById(id).addEventListener("click", () => this.selectSpeed(this.rate + step));
+      }
+      document.querySelectorAll("#playback-speed-presets button").forEach(button => {
+        button.addEventListener("click", () => this.selectSpeed(button.dataset.rate));
       });
       this.bindRange(document.getElementById("playback-volume"), {
         input: () => {

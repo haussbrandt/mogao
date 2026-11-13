@@ -26,7 +26,7 @@ from videos.playback_audio import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stream/playback")
 CACHE_BYTES = 512 * 1024**2
-RATES = (0.5, 0.75, 1, 1.25, 1.5, 1.75, 2)
+RATES = tuple(step / 20 for step in range(10, 41))
 _cache_lock = threading.Lock()
 _path_locks = WeakValueDictionary()
 _path_locks_lock = threading.Lock()
@@ -308,7 +308,8 @@ def prepared_cache(video_id: UUID, version: str) -> tuple[Path, dict]:
 @router.get("/{video_id}/manifest")
 def playback_manifest(video_id: UUID):
     try:
-        return prepare(video_id)
+        # Supported speeds can change without regenerating cached media.
+        return {**prepare(video_id), "rates": RATES}
     except HTTPException:
         raise
     except Exception:

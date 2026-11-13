@@ -21,7 +21,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import AnyHttpUrl, BaseModel
+from pydantic import AnyHttpUrl, BaseModel, field_validator
 
 from core.config import settings
 from core.coverage import (
@@ -52,7 +52,7 @@ from integrations.llm_processor import (
     schedule_video_dictionary_job,
 )
 from videos.video import Video, cut_audio, generate_video, run_media_command, take_screenshot
-from videos.playback import router as playback_router, remove_video_cache
+from videos.playback import RATES, router as playback_router, remove_video_cache
 from videos.video_library import (
     load_video_cached,
     load_video_progress,
@@ -1117,7 +1117,14 @@ class SaveVideoSubtitleModeRequest(BaseModel):
 
 
 class SaveVideoPlaybackRateRequest(BaseModel):
-    playback_rate: Literal[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+    playback_rate: float
+
+    @field_validator("playback_rate")
+    @classmethod
+    def supported_rate(cls, value: float) -> float:
+        if value not in RATES:
+            raise ValueError("Playback speed must be between 0.5 and 2 in steps of 0.05")
+        return value
 
 
 @router.post("/api/save-playback-rate")
