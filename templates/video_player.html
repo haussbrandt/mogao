@@ -61,6 +61,8 @@
             <button type="button" data-gap-mode="skip" aria-pressed="{{ 'true' if gap_mode == 'skip' else 'false' }}">Skip</button>
           </div>
         </div>
+        <button id="subtitle-loop" type="button" class="subtitle-action subtitle-automation"
+          aria-pressed="{{ 'true' if subtitle_loop else 'false' }}" title="Repeat the current subtitle cue" disabled>Loop: {{ 'On' if subtitle_loop else 'Off' }}</button>
         <button
           id="subtitle-mode-toggle"
           class="subtitle-action"

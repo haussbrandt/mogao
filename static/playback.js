@@ -58,7 +58,7 @@
       video.addEventListener("ended", () => {
         if (this.manifest.audio && this.manifest.duration > this.manifest.videoDuration) {
           this.holdingVideo = true;
-        } else this.pause();
+        } else this.complete();
       });
       video.addEventListener("pause", () => {
         if (this.wanted && !this.starting && !this.seekPending && !video.ended && video.paused) this.pause();
@@ -411,6 +411,7 @@
     }
 
     play() {
+      this.video.dispatchEvent(new Event("playback-before-play"));
       document.getElementById("playback-retry").hidden = true;
       this.wanted = true;
       if (this.manifest && (this.currentTime >= this.manifest.duration || (this.pausedAt != null && performance.now() - this.pausedAt > 30000))) {
@@ -466,6 +467,13 @@
         this.setStatus("");
         this.prefetch();
       } finally { clearTimeout(loading); if (revision === this.revision) this.starting = false; this.updateControls(); }
+    }
+
+    complete() {
+      // Let subtitle loops handle completion before clearing the play intent.
+      if (this.wanted && !this.seekPending && !this.scrubbing &&
+          !this.video.dispatchEvent(new Event("playback-ended", { cancelable: true }))) return;
+      this.pause();
     }
 
     pause() {
@@ -731,7 +739,7 @@
         return;
       }
       if (this.wanted && this.holdingVideo && this.currentTime >= this.manifest.duration) {
-        this.pause();
+        this.complete();
         return;
       }
       if (this.holdingVideo) this.video.dispatchEvent(new Event("timeupdate"));

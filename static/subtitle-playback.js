@@ -7,18 +7,23 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
   let navigationIndex = -1;
   let savedRate = null;
   let suppressedGap = null;
+  let pendingLoopIndex = -1;
+  let loopIndex = -1;
   const autopause = document.getElementById("subtitle-autopause");
+  const loop = document.getElementById("subtitle-loop");
   const gapMode = document.getElementById("subtitle-gap-mode");
   const previousCue = document.getElementById("playback-previous-cue");
   const nextCue = document.getElementById("playback-next-cue");
   if (autopause) autopause.checked = autopause.getAttribute("aria-pressed") === "true";
+  if (loop) loop.checked = loop.getAttribute("aria-pressed") === "true";
   playback.warmGapSpeed = gapMode?.value === "fast";
   let settingsSave = Promise.resolve();
 
   function navigationTargets() {
     const time = playback.currentTime;
     const selected = cues[navigationIndex];
-    if (playback.scrubbing || !selected || time < selected.start || time >= selected.end) {
+    // Media clocks can land just below the requested cue start after a seek.
+    if (playback.scrubbing || !selected || time < selected.start - 0.001 || time >= selected.end) {
       navigationIndex = -1;
     }
     // Autopause keeps the cue visible after its end; navigate relative to it.
@@ -47,6 +52,7 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
       playback.currentTime = cue.start;
       // Remember the chosen cue even when an earlier cue covers this time too.
       navigationIndex = index;
+      if (loop?.checked) loopIndex = index;
       updateNavigation();
     });
   });
@@ -54,6 +60,7 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
   function saveSettings() {
     const body = JSON.stringify({
       autopause: !!autopause?.checked,
+      subtitle_loop: !!loop?.checked,
       gap_mode: gapMode?.value ?? "normal",
     });
     // Snapshot each change and save in order, including rapid toggles.
@@ -77,19 +84,53 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
 
   function resetPosition() {
     previousTime = null;
+    pendingLoopIndex = -1;
     pinnedIndex = -1;
     suppressedGap = null;
     restoreRate();
   }
 
+  function restartCue(index) {
+    resetPosition();
+    playback.currentTime = cues[index].start;
+    // The seek clears selection; restore it for this and subsequent repeats.
+    loopIndex = index;
+    navigationIndex = index;
+  }
+
   // Controller seeks include timeline, transcript, and skip-button navigation.
   // Native seeking events also occur during rate changes and seek completion.
-  video.addEventListener("playback-seek", () => { navigationIndex = -1; });
+  video.addEventListener("playback-seek", () => {
+    navigationIndex = -1;
+    pendingLoopIndex = -1;
+    loopIndex = -1;
+  });
   video.addEventListener("seeking", () => {
     // Rate changes also align the video with the audio clock internally.
     if (playback.seekPending) resetPosition();
   });
   video.addEventListener("play", () => { pinnedIndex = -1; });
+  video.addEventListener("playback-before-play", () => {
+    if (loop?.checked && pendingLoopIndex !== -1) restartCue(pendingLoopIndex);
+  });
+  video.addEventListener("playback-ended", (event) => {
+    if (!loop?.checked || !playback.wanted || playback.seekPending || playback.scrubbing) return;
+    const position = previousTime ?? playback.currentTime;
+    const index = loopIndex !== -1 ? loopIndex : navigationIndex !== -1 ? navigationIndex :
+      cues.findIndex(cue => position >= cue.start - 0.001 && position < cue.end);
+    if (index === -1) return;
+    event.preventDefault();
+    if (autopause?.checked) {
+      loopIndex = index;
+      pendingLoopIndex = index;
+      pinnedIndex = index;
+      previousTime = playback.currentTime;
+      playback.pause();
+      restoreRate();
+    } else {
+      restartCue(index);
+    }
+  });
   video.addEventListener("pause", () => {
     if (!playback.wanted) restoreRate();
   });
@@ -115,12 +156,21 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
     if (!autopause.checked) pinnedIndex = -1;
     saveSettings();
   });
+  loop?.addEventListener("click", () => {
+    loop.checked = !loop.checked;
+    loop.setAttribute("aria-pressed", String(loop.checked));
+    loop.textContent = `Loop: ${loop.checked ? "On" : "Off"}`;
+    pendingLoopIndex = loop.checked ? pinnedIndex : -1;
+    loopIndex = loop.checked ? (pinnedIndex !== -1 ? pinnedIndex : navigationIndex) : -1;
+    saveSettings();
+  });
 
   return {
     restoreRate,
     setCues(value) {
       resetPosition();
       navigationIndex = -1;
+      loopIndex = -1;
       cues = value;
       // Merge overlapping cues so a gap can never skip another cue's speech.
       intervals = [];
@@ -131,11 +181,16 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
       }
       if (autopause) autopause.disabled = !cues.length;
       if (gapMode) gapMode.disabled = !cues.length;
+      if (loop) loop.disabled = !cues.length;
       updateNavigation();
     },
     tick() {
       updateNavigation();
       const time = playback.currentTime;
+      if (playback.wanted && pendingLoopIndex !== -1 && loop?.checked) {
+        restartCue(pendingLoopIndex);
+        return -1;
+      }
       if (gapMode?.value === "fast" && !isHoldingSpeed()) playback.prepareGapSpeed?.();
       if (playback.seekPending || playback.scrubbing) {
         previousTime = null;
@@ -148,13 +203,28 @@ window.createSubtitlePlayback = function (playback, video, isHoldingSpeed) {
         return pinnedIndex;
       }
       pinnedIndex = -1;
-      if (autopause?.checked && previousTime !== null && time >= previousTime) {
+      if (loop?.checked && loopIndex === -1) {
+        // Keep one cue selected until an explicit seek or toggle releases it.
+        const position = previousTime ?? time;
+        loopIndex = navigationIndex !== -1 ? navigationIndex :
+          cues.findIndex(cue => position >= cue.start - 0.001 && position < cue.end);
+        if (loopIndex === -1) {
+          loopIndex = cues.findIndex(cue => time >= cue.start - 0.001 && time < cue.end);
+        }
+      }
+      if ((autopause?.checked || loop?.checked) && previousTime !== null && time >= previousTime) {
         let ending = -1;
         cues.forEach((cue, index) => {
+          if (loop?.checked && loopIndex !== -1 && index !== loopIndex) return;
           if (cue.end > previousTime && cue.end <= time &&
               (ending === -1 || cue.end < cues[ending].end)) ending = index;
         });
         if (ending !== -1) {
+          if (!autopause?.checked) {
+            restartCue(ending);
+            return -1;
+          }
+          pendingLoopIndex = loop?.checked ? ending : -1;
           pinnedIndex = ending;
           previousTime = time;
           playback.pause();
