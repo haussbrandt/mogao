@@ -1080,6 +1080,7 @@ async def watch_video(request: Request, video_id: UUID):
             "initial_playback_rate": preferences.get("playback_rate", 1),
             "autopause": preferences.get("autopause") is True,
             "subtitle_loop": preferences.get("subtitle_loop") is True,
+            "controls_below": preferences.get("controls_layout") == "below",
             "gap_mode": preferences.get("gap_mode")
             if preferences.get("gap_mode") in ("normal", "fast", "skip") else "normal",
             "has_subtitles": has_subtitles,
@@ -1118,6 +1119,10 @@ class SaveVideoSortRequest(BaseModel):
 
 class SaveVideoSubtitleModeRequest(BaseModel):
     subtitle_mode: Literal["subtitles", "transcript"]
+
+
+class SaveVideoControlsLayoutRequest(BaseModel):
+    controls_layout: Literal["overlay", "below"]
 
 
 class SaveVideoPlaybackRateRequest(BaseModel):
@@ -1159,6 +1164,14 @@ async def save_video_playback_rate_api(data: SaveVideoPlaybackRateRequest):
 async def save_video_subtitle_mode_api(data: SaveVideoSubtitleModeRequest):
     current_settings = load_video_settings()
     current_settings["subtitle_mode"] = data.subtitle_mode
+    save_video_settings(current_settings)
+    return {"status": "ok"}
+
+
+@router.post("/api/save-controls-layout")
+async def save_video_controls_layout_api(data: SaveVideoControlsLayoutRequest):
+    current_settings = load_video_settings()
+    current_settings["controls_layout"] = data.controls_layout
     save_video_settings(current_settings)
     return {"status": "ok"}
 

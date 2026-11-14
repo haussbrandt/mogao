@@ -10,6 +10,28 @@ const deckWords = new Set(window.MOGAO_CONFIG.deckWords);
 const progressSaveInterval = 5000;
 let lastProgressSave = 0;
 
+const controlsLayoutToggle = document.getElementById("controls-layout-toggle");
+let controlsLayoutSave = Promise.resolve();
+controlsLayoutToggle?.addEventListener("click", () => {
+  const below = document.getElementById("player-container").classList.toggle("controls-below");
+  controlsLayoutToggle.textContent = below ? "Controls: Below" : "Controls: Overlay";
+  controlsLayoutToggle.setAttribute("aria-pressed", String(below));
+  controlsLayoutToggle.title = below
+    ? "Overlay controls on the video for a larger picture"
+    : "Place controls below the picture so they never cover the video";
+  const body = JSON.stringify({ controls_layout: below ? "below" : "overlay" });
+  // Save in click order so rapid toggles preserve the final selection.
+  controlsLayoutSave = controlsLayoutSave.then(async () => {
+    const response = await fetch(`${window.MOGAO_CONFIG.videoBasePath}/api/save-controls-layout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Mogao-Request": "1" },
+      body,
+      keepalive: true,
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  }).catch(error => console.error("Could not save controls layout", error));
+});
+
 const speedIndicator = document.getElementById("hold-speed-indicator");
 const holdDelay = 250;
 let speedHold = null;

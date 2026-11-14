@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=17"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=17" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=18" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -81,6 +81,9 @@
             ⋮
           </summary>
           <div id="subtitle-menu">
+            <button id="controls-layout-toggle" type="button"
+              aria-pressed="{{ 'true' if controls_below else 'false' }}" aria-controls="player-container"
+              title="{{ 'Overlay controls on the video for a larger picture' if controls_below else 'Place controls below the picture so they never cover the video' }}">Controls: {{ 'Below' if controls_below else 'Overlay' }}</button>
             <button id="replace-subtitles" type="button">
               Replace subtitles
             </button>
@@ -100,7 +103,8 @@
       </div>
     </div>
     <div id="player-layout">
-      <div id="player-container" class="video-playback">
+      <div id="player-container" class="video-playback{% if controls_below %} controls-below{% endif %}">
+        <div id="video-stage">
         <video
           id="video"
           playsinline
@@ -111,6 +115,8 @@
         <div id="playback-status" role="status">
           <span class="playback-spinner" aria-hidden="true"></span>
           <span class="playback-message">Loading video…</span>
+        </div>
+        <div id="subtitle-overlay" data-lookup-root{% if transcript_mode %} hidden{% endif %}></div>
         </div>
         <div id="playback-controls" role="group" aria-label="Video controls">
           <div class="playback-timeline">
@@ -165,7 +171,6 @@
           </div>
           <button id="playback-retry" type="button" hidden>Retry</button>
         </div>
-        <div id="subtitle-overlay" data-lookup-root{% if transcript_mode %} hidden{% endif %}></div>
       </div>
       {% if has_subtitles %}
       <aside id="transcript-panel" aria-label="Video transcript"{% if not transcript_mode %} hidden{% endif %}>
@@ -214,5 +219,5 @@
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
   <script src="{{ url_for('static', path='playback.js') }}?v=8"></script>
   <script src="{{ url_for('static', path='subtitle-playback.js') }}?v=6"></script>
-  <script src="{{ url_for('static', path='video.js' )}}?v=16"></script>
+  <script src="{{ url_for('static', path='video.js' )}}?v=19"></script>
 </html>
