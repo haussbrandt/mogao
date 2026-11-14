@@ -488,6 +488,7 @@
       return this.seekPending ? Math.min(this.pendingTime, this.manifest?.duration ?? Infinity) : this.video.currentTime;
     }
     set currentTime(value) {
+      this.video.dispatchEvent(new Event("playback-seek"));
       this.pendingTime = Math.max(0, Number(value) || 0);
       if (this.manifest) this.pendingTime = this.clampPosition(this.pendingTime);
       this.seekPending = true;

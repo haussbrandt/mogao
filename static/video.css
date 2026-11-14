@@ -163,7 +163,7 @@ body {
   gap: 10px;
   min-width: 0;
 }
-.playback-actions { gap: 6px; }
+.playback-actions { gap: 6px; flex-wrap: wrap; }
 .playback-volume { margin-left: auto; gap: 2px; }
 
 #playback-controls button, #playback-controls select {
@@ -184,6 +184,8 @@ body {
 #playback-controls :disabled { opacity: 0.4; cursor: default; }
 #playback-controls svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 #playback-controls svg text { fill: currentColor; stroke: none; font: 9px system-ui, sans-serif; font-weight: 600; }
+#playback-controls .cue-navigation { gap: 2px; padding: 0 6px; }
+#playback-controls .cue-direction { width: 16px; }
 #playback-play { margin-left: -8px; }
 #playback-play[data-playing="false"] .pause-icon, #playback-play[data-playing="true"] .play-icon,
 #playback-mute[data-muted="false"] .volume-muted, #playback-mute[data-muted="true"] .volume-waves { display: none; }

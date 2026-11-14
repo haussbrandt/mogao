@@ -14,7 +14,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='shared.css') }}?v=17"
     />
-    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=15" />
+    <link rel="stylesheet" href="{{ url_for('static', path='video.css') }}?v=17" />
     <!-- Favicons -->
     <link
       rel="apple-touch-icon"
@@ -125,6 +125,16 @@
             <button id="playback-forward" type="button" aria-label="Forward 10 seconds" title="Forward 10 seconds" disabled>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 7h4v-4M21 7a10 10 0 1 0 1 10"/><text x="12" y="15" text-anchor="middle">10</text></svg>
             </button>
+            {% if has_subtitles %}
+            <button id="playback-previous-cue" class="cue-navigation" type="button" aria-label="Previous subtitle cue" title="Previous subtitle cue" disabled>
+              <svg class="cue-direction" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 10h2m4 0h6M6 14h6m4 0h2"/></svg>
+            </button>
+            <button id="playback-next-cue" class="cue-navigation" type="button" aria-label="Next subtitle cue" title="Next subtitle cue" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 10h2m4 0h6M6 14h6m4 0h2"/></svg>
+              <svg class="cue-direction" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+            {% endif %}
             <div class="playback-volume">
               <button id="playback-mute" type="button" aria-label="Mute" title="Mute" data-muted="false" disabled>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path class="volume-waves" d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/><path class="volume-muted" d="m16 9 6 6m0-6-6 6"/></svg>
@@ -200,7 +210,7 @@
   {% endif %}
   <script src="{{ url_for('static', path='segmenter.js') }}?v=7"></script>
   <script src="{{ url_for('static', path='dictionary.js') }}?v=14"></script>
-  <script src="{{ url_for('static', path='playback.js') }}?v=7"></script>
-  <script src="{{ url_for('static', path='subtitle-playback.js') }}?v=4"></script>
+  <script src="{{ url_for('static', path='playback.js') }}?v=8"></script>
+  <script src="{{ url_for('static', path='subtitle-playback.js') }}?v=6"></script>
   <script src="{{ url_for('static', path='video.js' )}}?v=16"></script>
 </html>
