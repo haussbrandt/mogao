@@ -78,6 +78,96 @@ function initializeCoverage() {
   const grid = document.querySelector("[data-coverage-kind]");
   const dialog = document.getElementById("coverage-dialog");
   if (!grid || !dialog || !window.LocalVocabulary) return;
+  let scrollLock = null;
+  function lockLibraryScroll() {
+    if (scrollLock) return;
+    const body = document.body;
+    scrollLock = {
+      x: window.scrollX, y: window.scrollY,
+      top: body.style.top, left: body.style.left, right: body.style.right,
+    };
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    body.style.top = `${-scrollLock.y}px`;
+    body.style.left = `${-scrollLock.x}px`;
+    body.style.right = `${scrollbarWidth}px`;
+    document.documentElement.classList.add("coverage-scroll-locked");
+  }
+  function unlockLibraryScroll() {
+    if (!scrollLock) return;
+    const saved = scrollLock;
+    scrollLock = null;
+    document.documentElement.classList.remove("coverage-scroll-locked");
+    for (const property of ["top", "left", "right"]) {
+      document.body.style[property] = saved[property];
+    }
+    window.scrollTo({ left: saved.x, top: saved.y, behavior: "instant" });
+  }
+  // Disable backdrop dismissal in compact viewports.
+  const backdropDismissal = window.matchMedia("(min-width: 768px) and (min-height: 600px)");
+  const outsideDialog = (event) => {
+    const rect = dialog.getBoundingClientRect();
+    return event.target === dialog && (
+      event.clientX < rect.left || event.clientX > rect.right ||
+      event.clientY < rect.top || event.clientY > rect.bottom
+    );
+  };
+  let backdropPress = null;
+  let backdropClick = false;
+  dialog.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch") return;
+    backdropClick = false;
+    backdropPress = backdropDismissal.matches && event.isPrimary && event.button === 0 && outsideDialog(event)
+      ? { id: event.pointerId, x: event.clientX, y: event.clientY } : null;
+  });
+  dialog.addEventListener("pointerup", (event) => {
+    if (event.pointerType === "touch") return;
+    backdropClick = backdropPress?.id === event.pointerId && outsideDialog(event) &&
+      Math.hypot(event.clientX - backdropPress.x, event.clientY - backdropPress.y) <= 10;
+    backdropPress = null;
+  });
+  dialog.addEventListener("pointercancel", () => {
+    backdropPress = null;
+    backdropClick = false;
+  });
+  dialog.addEventListener("click", (event) => {
+    if (backdropClick && backdropDismissal.matches && outsideDialog(event)) dialog.close();
+    backdropClick = false;
+  });
+  // Touch dismissal does not depend on synthesized mouse events.
+  let backdropTouch = null;
+  document.addEventListener("touchstart", (event) => {
+    backdropTouch = null;
+    backdropPress = null;
+    backdropClick = false;
+    if (!dialog.open || !backdropDismissal.matches || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    if (outsideDialog({ target: event.target, clientX: touch.clientX, clientY: touch.clientY })) {
+      backdropTouch = { id: touch.identifier, x: touch.clientX, y: touch.clientY };
+    }
+  }, { capture: true, passive: true });
+  document.addEventListener("touchmove", (event) => {
+    if (!backdropTouch) return;
+    const touch = [...event.touches].find((item) => item.identifier === backdropTouch.id);
+    if (!touch || event.touches.length !== 1 ||
+        Math.hypot(touch.clientX - backdropTouch.x, touch.clientY - backdropTouch.y) > 10) {
+      backdropTouch = null;
+    }
+  }, { capture: true, passive: true });
+  document.addEventListener("touchend", (event) => {
+    const start = backdropTouch;
+    backdropTouch = null;
+    if (!start || !dialog.open || !backdropDismissal.matches || event.touches.length) return;
+    const touch = [...event.changedTouches].find((item) => item.identifier === start.id);
+    if (!touch || Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 10 ||
+        !outsideDialog({ target: event.target, clientX: touch.clientX, clientY: touch.clientY })) return;
+    // Suppress the compatibility click so it cannot activate the library below.
+    if (!event.cancelable) return;
+    event.preventDefault();
+    dialog.close();
+  }, { capture: true, passive: false });
+  document.addEventListener("touchcancel", () => {
+    backdropTouch = null;
+  }, { capture: true, passive: true });
   const kind = grid.dataset.coverageKind;
   const buttons = [...grid.querySelectorAll("[data-coverage-id]")];
   const message = document.getElementById("coverage-message");
@@ -491,6 +581,7 @@ function initializeCoverage() {
       document.getElementById("coverage-item-title").textContent =
         button.dataset.coverageTitle;
       dialog.showModal();
+      lockLibraryScroll();
       void loadDetail();
       void loadItemDictionary().catch(() => {});
     });
@@ -499,6 +590,10 @@ function initializeCoverage() {
     .getElementById("coverage-close")
     .addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => {
+    unlockLibraryScroll();
+    backdropTouch = null;
+    backdropPress = null;
+    backdropClick = false;
     requestNumber++;
     dictionaryRequest++;
     lookup.close();

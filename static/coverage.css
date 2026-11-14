@@ -20,6 +20,18 @@
   outline: 2px solid var(--accent-focus);
   outline-offset: 3px;
 }
+html.coverage-scroll-locked {
+  overflow: hidden;
+}
+html.coverage-scroll-locked body {
+  position: fixed;
+  overflow: hidden;
+}
+#coverage-close {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
 #coverage-dialog {
   width: min(720px, calc(100% - 24px));
   box-sizing: border-box;
